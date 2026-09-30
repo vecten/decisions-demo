@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.DS_Store
+.logfire/
+# Mined session commands, labels and model runs: personal data, keep local
+data/
+.env

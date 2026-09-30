@@ -1,0 +1,26 @@
+[project]
+name = "decisions-demo"
+version = "0.1.0"
+description = "Decision models (Jev, Luna) vs language models (Sonnet) on the same typed questions"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic-ai-slim[anthropic,openai,typesafe,logfire]>=2.45.0",
+    "pydantic>=2.11",
+    "logfire>=4",
+    "typer>=0.15",
+    "rich>=13",
+]
+
+[project.scripts]
+mine-sessions = "decisions_demo.mine_sessions:app"
+label = "decisions_demo.label:app"
+run-act = "decisions_demo.runner:app"
+report = "decisions_demo.report:app"
+dealflow = "decisions_demo.act2_dealflow:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/decisions_demo"]
