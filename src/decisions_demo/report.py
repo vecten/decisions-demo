@@ -105,23 +105,24 @@ def routing_fit(results: dict[str, dict[str, dict]], labels: dict[str, dict], ba
     rows = [r for r in results[backend].values() if 'error' not in r and r['id'] in labels]
     t = Table(title=f'routing fit on "{field}": {backend} outside band, sonnet inside')
     t.add_column('band'); t.add_column('routed', justify='right'); t.add_column('combined acc', justify='right'); t.add_column(f'{backend} alone', justify='right')
+    # The band is on P(yes), but Jev's per-field confidence for a bool is its distance
+    # from 0.5, scaled to 0-1 (P(yes)=0.01 -> 0.98). So P(yes) inside 0.5 +/- half
+    # is the same as confidence below 2 * half.
     for half in (0.0, 0.1, 0.2, 0.3):
         lo, hi = 0.5 - half, 0.5 + half
         routed, correct, alone = 0, 0, 0
         for r in rows:
             truth = labels[r['id']]['label'][field]
-            p = r.get('confidence', {}).get(field)
-            if p is None:
-                p = 1.0 if r['output'][field] else 0.0
+            sure = r.get('confidence', {}).get(field, 1.0)
             alone += (r['output'][field] == truth)
-            if lo < p < hi:
+            if sure < 2 * half:
                 routed += 1
                 s = results['sonnet'].get(r['id'])
                 correct += bool(s and 'error' not in s and s['output'][field] == truth)
             else:
                 correct += (r['output'][field] == truth)
         n = max(len(rows), 1)
-        t.add_row(f'{lo:.1f}-{hi:.1f}', f'{routed / n:.0%}', f'{correct / n:.0%}', f'{alone / n:.0%}')
+        t.add_row(f'P(yes) {lo:.1f}-{hi:.1f}',f'{routed / n:.0%}', f'{correct / n:.0%}', f'{alone / n:.0%}')
     console.print(t)
 
 
@@ -135,6 +136,7 @@ def main(act: str = typer.Argument(...), results_dir: Path = typer.Option(Path('
         disagreements(results, labels, commands)
         routing_fit(results, labels)
     else:
+        results.pop('notes', None)  # partner notes, not triage results
         deals = load(Path('data/deals.jsonl'))
         labels = {k: {'label': v['intended_label']} for k, v in deals.items()}
         scoreboard(act, results, labels)

@@ -42,13 +42,27 @@ class Priority(IntEnum):
     """How quickly should a partner see this?"""
 
     ignore = 0
-    """Not a deal or clearly out of thesis; nobody needs to see it."""
     later = 1
-    """Worth a look in the weekly batch."""
     this_week = 2
-    """A partner should see it within the week."""
     today = 3
-    """Time-sensitive or a strong thesis fit with a warm intro; today."""
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema, handler):
+        # Enum member docstrings never reach the JSON schema, so both backends would see a
+        # bare 0-3 with no direction. One const per level with its meaning fixes Sonnet,
+        # and is what Jev needs to treat the field as a rubric rather than a pick-one.
+        schema = handler(core_schema)
+        schema.pop('enum', None)
+        schema['anyOf'] = [{'type': 'integer', 'const': int(p), 'description': PRIORITY_LEVELS[p]} for p in cls]
+        return schema
+
+
+PRIORITY_LEVELS = {
+    Priority.ignore: 'Not a deal or clearly out of thesis; nobody needs to see it.',
+    Priority.later: 'Worth a look in the weekly batch.',
+    Priority.this_week: 'A partner should see it within the week.',
+    Priority.today: 'Time-sensitive or a strong thesis fit with a warm intro; today.',
+}
 
 
 class DealTriage(BaseModel):
