@@ -16,6 +16,9 @@ from pathlib import Path
 
 import typer
 
+from ..core.act import write_jsonl
+from .act import COMMANDS_PATH
+
 app = typer.Typer(add_completion=False)
 
 SECRET_PATTERNS = [
@@ -80,7 +83,7 @@ def iter_tool_calls(root: Path):
 @app.command()
 def main(
     root: Path = typer.Option(Path.home() / '.claude' / 'projects', help='Claude Code projects dir'),
-    out: Path = typer.Option(Path('data/commands.jsonl')),
+    out: Path = typer.Option(COMMANDS_PATH),
     n: int = typer.Option(100),
     seed: int = typer.Option(7),
     mix: str = typer.Option('40,30,30', help='risky,writes,reads share in percent'),
@@ -105,10 +108,7 @@ def main(
         sample += rng.sample(items, k)
     rng.shuffle(sample)
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open('w') as f:
-        for rec in sample:
-            f.write(json.dumps(rec) + '\n')
+    write_jsonl(out, sample)
     typer.echo(f'{len(seen)} unique commands found; wrote {len(sample)} to {out} '
                f'({ {k: len(v) for k, v in buckets.items()} } available per bucket)')
     typer.echo('Now read the file. Anything you would not put on a screen: delete the line.')

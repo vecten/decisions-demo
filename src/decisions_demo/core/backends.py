@@ -12,10 +12,16 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TypeVar
 
+import logfire
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
 T = TypeVar('T', bound=BaseModel)
+
+
+def configure_logfire(service_name: str = 'decisions-demo') -> None:
+    logfire.configure(service_name=service_name, send_to_logfire='if-token-present')
+    logfire.instrument_pydantic_ai()
 
 
 @dataclass

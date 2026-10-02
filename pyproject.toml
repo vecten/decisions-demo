@@ -12,11 +12,11 @@ dependencies = [
 ]
 
 [project.scripts]
-mine-sessions = "decisions_demo.mine_sessions:app"
-label = "decisions_demo.label:app"
-run-act = "decisions_demo.runner:app"
-report = "decisions_demo.report:app"
-dealflow = "decisions_demo.act2_dealflow:app"
+mine-sessions = "decisions_demo.guardrail.mine_sessions:app"
+label = "decisions_demo.guardrail.label:app"
+run-act = "decisions_demo.cli:run_act_app"
+report = "decisions_demo.cli:report_app"
+dealflow = "decisions_demo.dealflow.cli:app"
 
 [build-system]
 requires = ["hatchling"]

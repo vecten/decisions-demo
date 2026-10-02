@@ -1,0 +1,51 @@
+"""Batch runner: one act, one or more backends, JSONL out per backend.
+
+Runs are precomputed and reports only read the files. Concurrency is bounded per backend because
+Jev is happy with 50 in flight and Sonnet is not.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+
+import logfire
+import typer
+
+from .act import Act, write_jsonl
+from .backends import Backend, make_backends
+
+CONCURRENCY = {'jev': 32, 'luna': 32, 'luna_fallback': 8, 'sonnet': 6, 'opus': 3}
+
+
+async def run_backend(backend: Backend, act: Act, records: list[dict], out: Path) -> None:
+    sem = asyncio.Semaphore(CONCURRENCY.get(backend.name, 4))
+
+    async def one(rec: dict) -> dict:
+        async with sem:
+            try:
+                d = await backend.decide(act.state(rec), act.schema, act.instructions)
+                return {'id': rec['id'], **d.to_record()}
+            except NotImplementedError as e:
+                return {'id': rec['id'], 'backend': backend.name, 'error': str(e)}
+            except Exception as e:  # keep the batch alive, record the failure
+                logfire.warn('decision failed', backend=backend.name, id=rec['id'], error=str(e))
+                return {'id': rec['id'], 'backend': backend.name, 'error': repr(e)}
+
+    with logfire.span('batch {backend} {n}', backend=backend.name, n=len(records)):
+        results = await asyncio.gather(*(one(r) for r in records))
+
+    write_jsonl(out, results)
+    ok = sum('error' not in r for r in results)
+    typer.echo(f'{backend.name}: {ok}/{len(results)} ok -> {out}')
+
+
+def run_act(act: Act, backends: list[str], limit: int = 0) -> None:
+    """Run every backend over the act's records, one after another, each into data/results/<act>.<backend>.jsonl."""
+    records = act.records(limit)
+
+    async def go():
+        for b in make_backends(backends):
+            await run_backend(b, act, records, act.results_path(b.name))
+
+    asyncio.run(go())
