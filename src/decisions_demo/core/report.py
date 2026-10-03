@@ -13,11 +13,11 @@ from .act import Act
 
 console = Console()
 
-# USD per million tokens. VERIFY before the run; only Jev's is published as of 2026-09-29.
+# USD per million tokens (input, output).
 PRICES = {
     'jev': (0.042, 0.0),
-    'sonnet': (3.0, 15.0),        # placeholder, check the Anthropic pricing page
-    'opus': (15.0, 75.0),         # placeholder
+    'sonnet': (2.0, 10.0),        # Claude Sonnet 5.5 list price (same as Sonnet 5)
+    'opus': (4.0, 20.0),          # Claude Opus 5.5 list price
     'luna': (0.10, 0.50),         # speculated in press, not announced
     'luna_fallback': (0.10, 0.50),
 }
@@ -34,9 +34,26 @@ def load_results(act: str, results_dir: Path) -> dict[str, dict[str, dict]]:
     return {p.stem.split('.')[1]: load(p) for p in sorted(results_dir.glob(f'{act}.*.jsonl'))}
 
 
+# Anthropic prompt caching, relative to the input price: 5-minute cache writes, and cache reads by family.
+CACHE_WRITE = 1.25
+CACHE_READ = {'opus': 0.05}  # Opus 5.5: $0.20 per million; everything else 0.1x
+
+
+def prices(backend: str) -> tuple[float, float]:
+    """By backend name, else by model family: sonnet_no_thinking is billed as sonnet."""
+    return PRICES.get(backend) or PRICES.get(backend.split('_')[0], (0, 0))
+
+
 def cost(rows: list[dict], backend: str) -> float:
-    pin, pout = PRICES.get(backend, (0, 0))
-    return sum(r.get('input_tokens', 0) * pin + r.get('output_tokens', 0) * pout for r in rows) / 1e6
+    """input_tokens includes cached tokens (Pydantic AI's convention), so those are repriced, not added."""
+    pin, pout = prices(backend)
+    read_rate = CACHE_READ.get(backend.split('_')[0], 0.1)
+    total = 0.0
+    for r in rows:
+        read, write = r.get('cache_read_tokens', 0), r.get('cache_write_tokens', 0)
+        uncached = r.get('input_tokens', 0) - read - write
+        total += (uncached + write * CACHE_WRITE + read * read_rate) * pin + r.get('output_tokens', 0) * pout
+    return total / 1e6
 
 
 def scoreboard(act: Act, results: dict[str, dict[str, dict]], labels: dict[str, dict]) -> None:

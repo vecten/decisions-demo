@@ -28,9 +28,16 @@ def configure_logfire(service_name: str = 'decisions-demo') -> None:
 class Decision:
     output: BaseModel
     confidence: dict[str, float] = field(default_factory=dict)
+    probabilities: dict[str, dict[str, float]] = field(default_factory=dict)
+    """Jev only: the full distribution over each field's options, which margins and calibration need."""
+    rationale: str = ''
+    """Claude with thinking off only: the text it writes before calling the output tool. Kept for the
+    reports; the answer itself is only ever the tool call's arguments."""
     latency_ms: float = 0.0
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     backend: str = ''
 
     def to_record(self) -> dict[str, Any]:
@@ -38,9 +45,13 @@ class Decision:
             'backend': self.backend,
             'output': self.output.model_dump(),
             'confidence': self.confidence,
+            'probabilities': self.probabilities,
+            'rationale': self.rationale,
             'latency_ms': round(self.latency_ms, 1),
             'input_tokens': self.input_tokens,
             'output_tokens': self.output_tokens,
+            'cache_read_tokens': self.cache_read_tokens,
+            'cache_write_tokens': self.cache_write_tokens,
         }
 
 
@@ -50,8 +61,16 @@ class Backend(Protocol):
     async def decide(self, state: str, output_type: type[T], instructions: str | None = None) -> Decision: ...
 
 
+def rationale(parts) -> str:
+    """Text Claude wrote before calling the output tool. Without a tool call (native structured output)
+    the text part is the answer itself, not a rationale."""
+    if not any(p.part_kind == 'tool-call' for p in parts):
+        return ''
+    return ' '.join(p.content for p in parts if p.part_kind == 'text').strip()
+
+
 class PydanticAIBackend:
-    """Anything Pydantic AI can address by model string: 'typesafe:jev-latest', 'anthropic:claude-sonnet-5', ..."""
+    """Anything Pydantic AI can address by model string: 'typesafe:jev-latest', 'anthropic:claude-sonnet-5-5', ..."""
 
     def __init__(self, name: str, model: str, model_settings: dict[str, Any] | None = None):
         self.name = name
@@ -79,13 +98,18 @@ class PydanticAIBackend:
         details = result.response.provider_details or {}
         # Jev exposes per-field probabilities here; language models don't.
         confidence = dict(details.get('confidence', {}))
+        probabilities = dict(details.get('probabilities', {}))
         usage = result.usage
         return Decision(
             output=result.output,
             confidence=confidence,
+            probabilities=probabilities,
+            rationale=rationale(result.response.parts),
             latency_ms=latency,
             input_tokens=usage.input_tokens or 0,
             output_tokens=usage.output_tokens or 0,
+            cache_read_tokens=usage.cache_read_tokens or 0,
+            cache_write_tokens=usage.cache_write_tokens or 0,
             backend=self.name,
         )
 
@@ -105,12 +129,34 @@ class LunaDecisionsBackend:
         raise NotImplementedError('Decisions API adapter pending preview access; use luna_fallback')
 
 
-def make_backends(which: list[str]) -> list[Backend]:
+def claude_settings(thinking: bool) -> dict[str, Any]:
+    """Thinking decides how Pydantic AI sends the output schema to Claude, not just how hard it thinks.
+
+    On: adaptive thinking, and the schema goes as native structured output in strict mode. Strict mode
+    keeps each option's description but no longer pins the option list, so a pick outside it is caught
+    by validation and retried.
+
+    Off: the 5.5 models reject `disabled`; `between_tools` is the closest setting, and with it the schema
+    goes as a tool, verbatim, the same options Jev sees, cached because it is identical on every call
+    (below the model's minimum, 512 tokens on Sonnet 5.5, it just isn't). The 5.5 models can't be forced
+    to call a tool, so Claude writes a short visible rationale first and then calls it; the answer is
+    only ever the call's arguments, and the text is kept as Decision.rationale.
+    """
+    if thinking:
+        return {'anthropic_thinking': {'type': 'adaptive'}}
+    return {'anthropic_thinking': {'type': 'between_tools'}, 'anthropic_cache_tool_definitions': True}
+
+
+def make_backends(which: list[str], sonnet_thinking: bool = True) -> list[Backend]:
+    """`sonnet` follows the act's setting (Act.sonnet_thinking); the two explicit Sonnet names never change."""
     registry: dict[str, Backend] = {
         'jev': PydanticAIBackend('jev', 'typesafe:jev-latest', {'timeout': 10}),
-        'sonnet': PydanticAIBackend('sonnet', 'anthropic:claude-sonnet-5'),
-        # Slow, expensive reference judge for labels. Extended thinking on.
-        'opus': PydanticAIBackend('opus', 'anthropic:claude-opus-5', {'anthropic_thinking': {'type': 'adaptive'}, 'anthropic_effort': 'high'}),
+        'sonnet': PydanticAIBackend('sonnet', 'anthropic:claude-sonnet-5-5', claude_settings(sonnet_thinking)),
+        'sonnet_thinking': PydanticAIBackend('sonnet_thinking', 'anthropic:claude-sonnet-5-5', claude_settings(True)),
+        'sonnet_no_thinking': PydanticAIBackend('sonnet_no_thinking', 'anthropic:claude-sonnet-5-5', claude_settings(False)),
+        # Slow, expensive reference judge for labels and adjudication. Always thinks, in every act.
+        # Opus 5.5 defaults to effort medium; pin high.
+        'opus': PydanticAIBackend('opus', 'anthropic:claude-opus-5-5', {**claude_settings(True), 'anthropic_effort': 'high'}),
         # Same schema through structured outputs. Confidence is self-reported, not a calibrated probability.
         'luna_fallback': PydanticAIBackend('luna_fallback', 'openai:gpt-6-luna'),
         'luna': LunaDecisionsBackend(),

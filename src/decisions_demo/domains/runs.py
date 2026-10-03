@@ -1,0 +1,110 @@
+"""The runs act 3 makes, each a backend asking one question shape of the sample.
+
+  jev_flat          one Choice over every subindustry; the domain is the subindustry's parent
+  jev_sequential    domain Choice, then the sub Choice of the winning domain: two Jev calls
+  jev_fanout        domain Choice plus all six sub Choices in one call; sub read from the winner
+  jev_nouls         one Noul per domain, the multi-label footprint
+  sonnet            nested domain -> subindustry, thinking off (ACT.sonnet_thinking)
+  sonnet_thinking   the same with thinking on, on the first SUBSET companies (the sample is shuffled)
+
+Each writes data/results/domains.<run>.jsonl. A tag (`--tag rerun`) writes domains.<run>_<tag>.jsonl,
+which is how the Jev stability run sits next to the first one.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace
+
+from pydantic import BaseModel
+
+from ..core.act import RESULTS_DIR, Act, read_jsonl, write_jsonl
+from ..core.backends import Backend, Decision, make_backends
+from ..core.runner import run_backend
+from .act import ACT
+from .schemas import OTHER, Schemas, field_name
+
+RUNS = ('jev_flat', 'jev_sequential', 'jev_fanout', 'jev_nouls', 'sonnet', 'sonnet_thinking')
+SUBSET = 100
+
+
+class SequentialPick(BaseModel):
+    domain: str
+    subindustry: str | None
+
+
+@dataclass
+class Sequential:
+    """Domain first, then the subindustry Choice for the domain it picked: two calls, one result.
+
+    Latency and tokens are the sum of both calls; Other ends after the first.
+    """
+
+    backend: Backend
+    schemas: Schemas
+    name: str = field(init=False)
+
+    def __post_init__(self):
+        self.name = self.backend.name  # prices and concurrency follow the backend underneath
+
+    async def decide(self, state: str, output_type=None, instructions: str | None = None) -> Decision:
+        first = await self.backend.decide(state, self.schemas.domain, instructions)
+        domain = first.output.domain
+        parts = [first]
+        if domain in self.schemas.sub:
+            parts.append(await self.backend.decide(state, self.schemas.sub[domain], instructions))
+        merge = lambda attr: {k: v for d in parts for k, v in getattr(d, attr).items()}
+        return Decision(
+            output=SequentialPick(domain=domain, subindustry=parts[1].output.subindustry if len(parts) > 1 else None),
+            confidence=merge('confidence'),
+            probabilities=merge('probabilities'),
+            latency_ms=sum(d.latency_ms for d in parts),
+            input_tokens=sum(d.input_tokens for d in parts),
+            output_tokens=sum(d.output_tokens for d in parts),
+            backend=self.name,
+        )
+
+
+def pick(run: str, output: dict, schemas: Schemas) -> tuple[str, str | None]:
+    """(domain, subindustry) from any run's output; subindustry is None for Other. Tags (_rerun) are ignored."""
+    if run.startswith('jev_flat'):
+        sub = output['subindustry']
+        return (OTHER, None) if sub == OTHER else (schemas.parent[sub], sub)
+    if run.startswith('jev_fanout'):
+        domain = output['domain']
+        return domain, output.get(f'{field_name(domain)}_subindustry') if domain != OTHER else None
+    if run.startswith('sonnet') or run.startswith('opus'):
+        c = output.get('classification') or output['primary']
+        return c['domain'], c.get('subindustry')
+    return output['domain'], output['subindustry']
+
+
+def plan(schemas: Schemas, records: list[dict]) -> dict[str, tuple[Backend, Act, list[dict]]]:
+    jev, sonnet, sonnet_thinking = make_backends(['jev', 'sonnet', 'sonnet_thinking'], ACT.sonnet_thinking)
+    return {
+        'jev_flat': (jev, replace(ACT, schema=schemas.flat), records),
+        'jev_sequential': (Sequential(jev, schemas), ACT, records),
+        'jev_fanout': (jev, replace(ACT, schema=schemas.fan_out), records),
+        'jev_nouls': (jev, replace(ACT, schema=schemas.footprint), records),
+        'sonnet': (sonnet, replace(ACT, schema=schemas.nested), records),
+        'sonnet_thinking': (sonnet_thinking, replace(ACT, schema=schemas.nested), records[:SUBSET]),
+    }
+
+
+async def run(names: list[str], schemas: Schemas, records: list[dict], tag: str = '', retry_errors: bool = False) -> None:
+    """With retry_errors, only the rows that failed last time are asked again and merged into the file."""
+    runs = plan(schemas, records)
+    for name in names:
+        backend, act, recs = runs[name]
+        out = RESULTS_DIR / f'{ACT.name}.{name}{"_" + tag if tag else ""}.jsonl'
+        if not retry_errors:
+            await run_backend(backend, act, recs, out)
+            continue
+        previous = read_jsonl(out)
+        failed = {r['id'] for r in previous if 'error' in r}
+        if not failed:
+            continue
+        retry = out.with_suffix('.retry.jsonl')
+        await run_backend(backend, act, [r for r in recs if r['id'] in failed], retry)
+        fresh = {r['id']: r for r in read_jsonl(retry)}
+        write_jsonl(out, [fresh.get(r['id'], r) for r in previous])
+        retry.unlink()

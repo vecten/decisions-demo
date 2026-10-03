@@ -1,4 +1,6 @@
-"""Reference labels for the guardrail act: Opus 5 with extended thinking and an explanation.
+"""Reference labels for the guardrail act: Opus 5.5 with adaptive thinking and an explanation.
+
+The data/labels.jsonl in use was made with Opus 5 on 2026-10-01, before the switch to 5.5.
 
 Output goes to data/labels.jsonl. Hand-correct 20-30 of them; the explanation
 column makes that fast. Call these "reference labels", not ground truth.

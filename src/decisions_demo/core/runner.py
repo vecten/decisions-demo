@@ -18,8 +18,13 @@ from .backends import Backend, make_backends
 CONCURRENCY = {'jev': 32, 'luna': 32, 'luna_fallback': 8, 'sonnet': 6, 'opus': 3}
 
 
+def concurrency(backend: str) -> int:
+    """By backend name, else by model family: sonnet_thinking runs like sonnet."""
+    return CONCURRENCY.get(backend) or CONCURRENCY.get(backend.split('_')[0], 4)
+
+
 async def run_backend(backend: Backend, act: Act, records: list[dict], out: Path) -> None:
-    sem = asyncio.Semaphore(CONCURRENCY.get(backend.name, 4))
+    sem = asyncio.Semaphore(concurrency(backend.name))
 
     async def one(rec: dict) -> dict:
         async with sem:
@@ -42,10 +47,12 @@ async def run_backend(backend: Backend, act: Act, records: list[dict], out: Path
 
 def run_act(act: Act, backends: list[str], limit: int = 0) -> None:
     """Run every backend over the act's records, one after another, each into data/results/<act>.<backend>.jsonl."""
+    if act.schema is None:
+        raise typer.BadParameter(f'act {act.name!r} asks several questions; use its own command (e.g. `domains classify`)')
     records = act.records(limit)
 
     async def go():
-        for b in make_backends(backends):
+        for b in make_backends(backends, act.sonnet_thinking):
             await run_backend(b, act, records, act.results_path(b.name))
 
     asyncio.run(go())

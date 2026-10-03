@@ -18,6 +18,7 @@ ACT = Act(
     instructions=None,  # thesis is part of the state, see cli.generate
     state=lambda rec: rec['state'],
     compare_fields=('stage', 'sector', 'fits_thesis', 'warm_intro', 'priority', 'next_action'),
+    sonnet_thinking=True,  # triage and partner notes both think
 )
 
 # System Two output. Lives next to the triage results, so the report has to skip it.

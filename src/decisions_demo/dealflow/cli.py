@@ -38,7 +38,7 @@ def generate(n: int = 50, seed_note: str = ''):
     """Ask Sonnet for a realistic, varied inbox. The intended_label is our free reference."""
     configure_logfire()
     writer = Agent(
-        'anthropic:claude-sonnet-5',
+        'anthropic:claude-sonnet-5-5',
         output_type=SyntheticBatch,
         instructions=(
             'Write realistic inbound emails to a venture fund associate. Vary length, tone and quality. '
@@ -76,7 +76,7 @@ def notes(source: str = 'jev', min_priority: int = int(Priority.this_week)):
     deals = {r['id']: r for r in ACT.records()}
     triaged = read_jsonl(ACT.results_path(source))
     chosen = [t for t in triaged if 'error' not in t and int(t['output']['priority']) >= min_priority]
-    writer = make_backends(['sonnet'])[0]
+    writer = make_backends(['sonnet'], ACT.sonnet_thinking)[0]
     sem = asyncio.Semaphore(6)
 
     async def one(t):

@@ -28,11 +28,15 @@ class Act:
     """One question asked of every record in a dataset, answered by every backend in the same schema."""
 
     name: str
-    schema: type[BaseModel]
     data: Path
     state: Callable[[dict], str]
     """Turns one input record into the text every backend sees."""
+    schema: type[BaseModel] | None = None
+    """The question run-act asks. None for an act whose runs each ask a different one (domains)."""
     instructions: str | None = None
+    sonnet_thinking: bool = True
+    """What the backend name `sonnet` means in this act: adaptive thinking on, or off. The explicit
+    `sonnet_thinking` and `sonnet_no_thinking` backends are always available as comparison runs."""
     compare_fields: tuple[str, ...] = ()
     """Schema fields the scoreboard checks against the reference labels, in column order."""
 
