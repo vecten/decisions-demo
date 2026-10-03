@@ -9,6 +9,7 @@ dependencies = [
     "logfire>=4",
     "typer>=0.15",
     "rich>=13",
+    "httpx2>=2.13",
 ]
 
 [project.scripts]
@@ -17,6 +18,7 @@ label = "decisions_demo.guardrail.label:app"
 run-act = "decisions_demo.cli:run_act_app"
 report = "decisions_demo.cli:report_app"
 dealflow = "decisions_demo.dealflow.cli:app"
+domains = "decisions_demo.domains.cli:app"
 
 [build-system]
 requires = ["hatchling"]
