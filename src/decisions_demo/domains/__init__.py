@@ -1,4 +1,10 @@
-"""Act three: investing domains. Zero-shot classification of real companies into a fund's taxonomy.
+"""Act three: investing domains. Zero-shot, two-level classification of real companies into a fund's taxonomy.
 
-  domains fetch          # 100 YC companies with YC's own label as reference -> data/companies.jsonl
+  domains fetch && domains define && domains classify && domains adjudicate
+  report domains
 """
+
+from .act import ACT
+from .report import report
+
+__all__ = ['ACT', 'report']

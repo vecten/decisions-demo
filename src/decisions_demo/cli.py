@@ -13,13 +13,13 @@ from pathlib import Path
 
 import typer
 
-from . import dealflow, guardrail
+from . import dealflow, domains, guardrail
 from .core.act import RESULTS_DIR
 from .core.backends import configure_logfire
 from .core.report import load_results
 from .core.runner import run_act
 
-ACTS = {m.ACT.name: m for m in (guardrail, dealflow)}
+ACTS = {m.ACT.name: m for m in (guardrail, dealflow, domains)}
 
 
 def _act(name: str):

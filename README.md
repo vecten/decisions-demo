@@ -22,6 +22,7 @@ uv run domains classify --runs jev_flat,jev_sequential,jev_fanout,jev_nouls --ta
 uv run domains classify --runs sonnet --retry-errors  # re-ask only rows that failed (overloaded, timeouts)
 uv run domains adjudicate --dry-run                   # how many companies a run disputes with YC, and the Opus cost
 uv run domains adjudicate                             # Opus labels them blind -> data/domain_adjudicated.jsonl (hand-editable)
+uv run report domains                                 # every act 3 table; Nouls heatmap -> data/figures/*.png
 ```
 
 ## Models, and when Sonnet thinks

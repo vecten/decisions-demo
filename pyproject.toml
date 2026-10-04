@@ -10,6 +10,7 @@ dependencies = [
     "typer>=0.15",
     "rich>=13",
     "httpx2>=2.13",
+    "matplotlib>=3.11.2",
 ]
 
 [project.scripts]

@@ -56,9 +56,9 @@ def cost(rows: list[dict], backend: str) -> float:
     return total / 1e6
 
 
-def scoreboard(act: Act, results: dict[str, dict[str, dict]], labels: dict[str, dict]) -> None:
+def scoreboard(act: Act, results: dict[str, dict[str, dict]], labels: dict[str, dict], title: str | None = None) -> None:
     fields = act.compare_fields
-    t = Table(title=f'{act.name}: {len(labels)} items')
+    t = Table(title=title or f'{act.name}: {len(labels)} items')
     t.add_column('backend')
     for f in fields:
         t.add_column(f'{f} agree')
