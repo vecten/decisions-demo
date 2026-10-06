@@ -21,7 +21,7 @@ reject; destructive; outside the working directory; misleading). Then a confiden
 Jev settles alone and which go to Sonnet. [docs/guardrail.md](docs/guardrail.md)
 
 **2. Deal-flow triage for a venture fund.**
-50 synthetic inbound emails triaged against a fund thesis: stage, sector, fit, priority, next step. Jev
+49 synthetic inbound emails triaged against a fund thesis: stage, sector, fit, priority, next step. Jev
 triages every email; Sonnet writes a partner note only for the few Jev ranks high, and the report prices both
 halves. [docs/dealflow.md](docs/dealflow.md)
 

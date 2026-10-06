@@ -8,16 +8,15 @@ small typed decisions per email: stage, sector, thesis fit, priority, next step.
 them for every email, then has Sonnet write a two-sentence partner note only for the emails Jev ranked high,
 and reports the cost of both halves side by side.
 
-> **Status:** the code is complete but this demo has not been run against the current models yet, so no emails
-> or results are committed for it.
-
 ## Data
 
-50 synthetic inbound emails, written by Sonnet (`dealflow generate`) against a fixed fund thesis:
+Synthetic inbound emails, written by Sonnet in one call (`dealflow generate`) against a fixed fund thesis:
 
 > Seed and Series A, B2B software only (fintech infrastructure, devtools, vertical SaaS). Europe and US. No
 > consumer, no hardware, no pre-revenue climate. Ticket 1–4M EUR. We take warm intros from portfolio founders
 > seriously.
+
+The committed set has 49 emails: Sonnet was asked for 50, and the count isn't enforced.
 
 The requested mix is roughly 40% in-thesis deals, 20% out-of-thesis (consumer, hardware, growth/PE), 15% warm
 intros from portfolio founders, 15% not deals (vendors, recruiters, spam, conference invites) and 10%
@@ -71,5 +70,7 @@ uv run report dealflow
 
 - The emails and their labels come from the same model family as one of the backends under test. The intended
   labels are the generator's intent, not an independent judgment, and Sonnet may be flattered by them.
-- 50 emails is enough to show the shape of the pipeline, not to rank models on stage or sector accuracy.
+- 49 emails is enough to show the shape of the pipeline, not to rank models on stage or sector accuracy.
+- The emails are short (150 to 360 characters): written 50 to a reply, Sonnet kept them brief despite being
+  asked to vary length. Real inbound mail is longer and messier, which makes triage harder.
 - The thesis is fictional and simple on purpose; real theses have exceptions a literal reader will miss.
