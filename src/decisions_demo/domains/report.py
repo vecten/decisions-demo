@@ -27,7 +27,7 @@ from pathlib import Path
 
 from rich.table import Table
 
-from ..core.report import console, cost, load, scoreboard
+from ..core.report import ROUTE, ROUTE_SETTINGS, console, cost, load, route_label, scoreboard, uncertain
 from ..core.runner import concurrency
 from .act import ACT, ADJUDICATED_PATH, SAMPLE_PATH
 from .runs import pick
@@ -35,9 +35,6 @@ from .schemas import OTHER, Schemas, build, field_name, load_definitions
 
 MAIN_RUNS = ('jev_flat', 'jev_sequential', 'jev_fanout', 'sonnet', 'sonnet_thinking')
 JEV_CHOICE_RUNS = ('jev_flat', 'jev_sequential', 'jev_fanout')
-ROUTE = (0.6, 0.2)
-"""Default routing rule: send the company to Sonnet when Jev's top-1 subindustry probability is under 0.6
-or its margin over the runner-up is under 0.2. The fit table shows how other settings trade off."""
 FIGURES = Path('data/figures')
 SHORT = {'B2B': 'B2B', 'Consumer': 'Consumer', 'Fintech': 'Fintech', 'Healthcare': 'Health',
          'Industrials': 'Industrials', 'Real Estate and Construction': 'RE & Constr.', OTHER: 'Other'}
@@ -104,8 +101,8 @@ class Data:
         return sorted(probs.items(), key=lambda x: -x[1])[:k]
 
     def uncertain(self, i: str, min_top1: float = ROUTE[0], min_margin: float = ROUTE[1]) -> bool:
-        (_, p1), (_, p2) = self.top(i, 2)
-        return p1 < min_top1 or p1 - p2 < min_margin
+        """The shared routing rule (core.report.ROUTE) on Jev flat's subindustry distribution."""
+        return uncertain(self.ok['jev_flat'][i]['probabilities']['subindustry'], min_top1, min_margin)
 
     def noul_p(self, i: str) -> dict[str, float]:
         """P(yes) per domain. Jev reports a bool's confidence as its distance from 0.5, scaled to 0-1."""
@@ -183,11 +180,9 @@ def routing(d: Data) -> None:
     t = Table(title=f'routing: Jev flat answers, Sonnet takes the uncertain ones ({n} companies, level 2 vs reference)')
     for col in ('route when', 'routed', 'combined L1', 'combined L2', 'USD per 1000 companies'):
         t.add_column(col, justify='right')
-    settings = [(0.0, 0.0), (0.5, 0.1), (0.6, 0.2), (0.7, 0.3), (0.8, 0.4), (0.9, 0.5), (1.01, 1.01)]
-    for t1, m in settings:
+    for t1, m in ROUTE_SETTINGS:
         k, l1, l2 = evaluate(t1, m)
-        label = 'never' if t1 == 0 else 'always' if t1 > 1 else f'top-1 < {t1:.1f} or margin < {m:.1f}'
-        t.add_row(label + (' (default)' if (t1, m) == ROUTE else ''), _pct(k, n), _pct(l1, n), _pct(l2, n),
+        t.add_row(route_label(t1, m), _pct(k, n), _pct(l1, n), _pct(l2, n),
                   f'{1000 * (jev_cost + sonnet_cost * k / n):.2f}')
     console.print(t)
     console.print(f'alone: jev_flat {alone["jev_flat"] / n:.0%}, sonnet {alone["sonnet"] / n:.0%} at level 2')

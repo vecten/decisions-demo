@@ -57,6 +57,24 @@ def cost(rows: list[dict], backend: str) -> float:
     return total / 1e6
 
 
+# Routing a Choice to the language model, shared by every demo that routes on Jev's distribution.
+ROUTE = (0.6, 0.2)
+"""Default rule: send an item to Sonnet when Jev's top-1 probability is under 0.6 or its margin over the
+runner-up is under 0.2. ROUTE_SETTINGS are the alternatives the routing tables show."""
+ROUTE_SETTINGS = [(0.0, 0.0), (0.5, 0.1), (0.6, 0.2), (0.7, 0.3), (0.8, 0.4), (0.9, 0.5), (1.01, 1.01)]
+
+
+def uncertain(probabilities: dict[str, float], min_top1: float = ROUTE[0], min_margin: float = ROUTE[1]) -> bool:
+    """Whether Jev's distribution over one field's options is unsure enough to route, by the rule above."""
+    p1, p2 = (sorted(probabilities.values(), reverse=True) + [0.0, 0.0])[:2]
+    return p1 < min_top1 or p1 - p2 < min_margin
+
+
+def route_label(min_top1: float, min_margin: float) -> str:
+    label = 'never' if min_top1 == 0 else 'always' if min_top1 > 1 else f'top-1 < {min_top1:.1f} or margin < {min_margin:.1f}'
+    return label + (' (default)' if (min_top1, min_margin) == ROUTE else '')
+
+
 def scoreboard(act: Act, results: dict[str, dict[str, dict]], labels: dict[str, dict], title: str | None = None,
                agree: str = 'agree') -> None:
     """One row per run. `agree` names what the agreement columns compare against."""

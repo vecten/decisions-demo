@@ -83,9 +83,24 @@ uv run report dealflow
 
 - **Scoreboard:** agreement per field with the labels the OpenAI model wrote ("vs OpenAI-generated labels"),
   p50 and p95 latency, cost and errors for Jev and Sonnet.
+- **Routing on next action and on priority:** Jev answers every email, and where Jev is unsure of the field
+  (its top probability under 0.6, or a margin under 0.2 over the runner-up, the same rule as demo 3) Sonnet's
+  answer is used instead. For a range of thresholds, the table shows the share routed, the combined agreement
+  and the cost per 1,000 emails, next to each model alone.
 - **Partner notes:** how many emails got one.
-- **Cost per step:** generating the emails (a one-off), each triage run, the partner notes, and the pipeline as
-  designed: Jev's triage plus the notes it asks for.
+- **Cost per step:** generating the emails (a one-off), each triage run, the partner notes, and the full
+  pipeline as designed: Jev triage on every email, Sonnet triage on the emails routed by the default rule on
+  either field, and notes for the emails whose final priority is this week or today; and the same pipeline
+  routed on priority only. Notes were only written for Jev's own high-priority emails, so these rows price them
+  at the measured mean per note.
+
+Routing on two fields compounds: an email goes to Sonnet if Jev is unsure of either, so the routed share is
+close to the union of both fields' shares, not the smaller one. A real pipeline would route per field, or route
+once on the field that gates the expensive step, which here is priority, since it decides who gets a partner
+note.
+
+With 50 emails, one email is 2 percentage points, so the report says so: differences of a few emails are within
+noise, and the tables show the shape of the trade-off rather than a ranking of Jev against Sonnet.
 
 ## Assumptions and caveats
 
