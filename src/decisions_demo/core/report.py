@@ -20,6 +20,7 @@ PRICES = {
     'opus': (4.0, 20.0),          # Claude Opus 5.5 list price
     'luna': (0.10, 0.50),         # speculated in press, not announced
     'luna_fallback': (0.10, 0.50),
+    'gpt-6.1-sol': (2.0, 10.0),   # OpenAI list price, short context, standard tier (2026-10-06); writes demo 2's emails
 }
 
 
@@ -34,9 +35,9 @@ def load_results(act: str, results_dir: Path) -> dict[str, dict[str, dict]]:
     return {p.stem.split('.')[1]: load(p) for p in sorted(results_dir.glob(f'{act}.*.jsonl'))}
 
 
-# Anthropic prompt caching, relative to the input price: 5-minute cache writes, and cache reads by family.
+# Prompt caching, relative to the input price: Anthropic's 5-minute cache writes, and cache reads by family.
 CACHE_WRITE = 1.25
-CACHE_READ = {'opus': 0.05}  # Opus 5.5: $0.20 per million; everything else 0.1x
+CACHE_READ = {'opus': 0.05, 'gpt-6.1-sol': 0.05}  # Opus 5.5 $0.20, gpt-6.1-sol $0.10 per million; everything else 0.1x
 
 
 def prices(backend: str) -> tuple[float, float]:
@@ -56,12 +57,14 @@ def cost(rows: list[dict], backend: str) -> float:
     return total / 1e6
 
 
-def scoreboard(act: Act, results: dict[str, dict[str, dict]], labels: dict[str, dict], title: str | None = None) -> None:
+def scoreboard(act: Act, results: dict[str, dict[str, dict]], labels: dict[str, dict], title: str | None = None,
+               agree: str = 'agree') -> None:
+    """One row per run. `agree` names what the agreement columns compare against."""
     fields = act.compare_fields
     t = Table(title=title or f'{act.name}: {len(labels)} items')
     t.add_column('backend')
     for f in fields:
-        t.add_column(f'{f} agree')
+        t.add_column(f'{f} {agree}')
     t.add_column('p50 ms', justify='right')
     t.add_column('p95 ms', justify='right')
     t.add_column('cost USD', justify='right')

@@ -18,8 +18,11 @@ ACT = Act(
     instructions=None,  # thesis is part of the state, see cli.generate
     state=lambda rec: rec['state'],
     compare_fields=('stage', 'sector', 'fits_thesis', 'warm_intro', 'priority', 'next_action'),
-    sonnet_thinking=True,  # triage and partner notes both think
+    # Triage without thinking, the same baseline as demo 3: the schema goes to Sonnet as a tool, as Jev sees it.
+    # The partner notes are writing, so `dealflow notes` uses `sonnet_thinking` regardless.
+    sonnet_thinking=False,
 )
 
-# System Two output. Lives next to the triage results, so the report has to skip it.
+# System Two output and the generator's usage. They live next to the triage results, so the report skips them.
 NOTES_PATH = ACT.results_path('notes')
+GENERATION_PATH = ACT.results_path('generation')

@@ -21,9 +21,10 @@ reject; destructive; outside the working directory; misleading). Then a confiden
 Jev settles alone and which go to Sonnet. [docs/guardrail.md](docs/guardrail.md)
 
 **2. Deal-flow triage for a venture fund.**
-49 synthetic inbound emails triaged against a fund thesis: stage, sector, fit, priority, next step. Jev
-triages every email; Sonnet writes a partner note only for the few Jev ranks high, and the report prices both
-halves. [docs/dealflow.md](docs/dealflow.md)
+50 synthetic inbound emails, from three-line intros to long founder emails and forwarded threads, triaged
+against a fund thesis: stage, sector, fit, priority, next step. An OpenAI model writes the emails and the
+reference labels, so Claude is never scored against its own family's labels. Jev triages every email; Sonnet
+writes a partner note only for the few Jev ranks high, and the report prices every step. [docs/dealflow.md](docs/dealflow.md)
 
 **3. Investing domains: classifying 500 real companies into a two-level taxonomy.**
 Y Combinator companies classified into domain → subindustry from a fund's own written definitions. Four ways of
@@ -69,7 +70,7 @@ Backends live in `src/decisions_demo/core/backends.py`. Each demo is an `Act` in
 | Demo | `sonnet` (main run) | Comparison run |
 |---|---|---|
 | 1 guardrail | thinking on; also where uncertain commands are routed | `sonnet_no_thinking` |
-| 2 dealflow | thinking on, for triage and partner notes | none |
+| 2 dealflow | thinking off, for triage; the partner notes use `sonnet_thinking` | none |
 | 3 domains | thinking off | `sonnet_thinking` on 100 of the 500 companies |
 
 ### How thinking changes the request
@@ -100,8 +101,8 @@ Thinking changes more than how hard Claude works: it decides how Pydantic AI sen
   cache reads at 0.1× the input price. Jev bills input only.
 - Latency is measured with several requests in flight per backend (`core/runner.py`); the reports state the
   concurrency next to the numbers.
-- Reference labels come from a careful model (Opus with thinking) or, in demo 2, from the data generator, plus
-  hand corrections. They are references, not ground truth, and each demo's doc says how they were made.
+- Reference labels come from a careful model (Opus with thinking) or, in demo 2, from the OpenAI model that
+  wrote the data, plus hand corrections. They are references, not ground truth, and each demo's doc says how they were made.
 
 ### Repository layout
 
