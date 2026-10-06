@@ -1,6 +1,7 @@
 """Demo 3: two-level investing-domain classification of real YC companies.
 
-  domains fetch          # ~500 active YC companies since 2019, proportional by subindustry, plus 30 Other
+  domains fetch          # rebuild the published 500-company sample from the YC mirror -> data/companies.jsonl
+  domains fetch --new    # or draw a fresh one (writes data/company_sample.jsonl too)
   domains define         # Sonnet writes one line per sampled subindustry, once -> data/domain_definitions.json
   domains classify       # every run in domains/runs.py -> data/results/domains.<run>.jsonl
   domains classify --runs jev_flat,jev_sequential,jev_fanout,jev_nouls --tag rerun   # Jev stability run
@@ -11,6 +12,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import random
 import re
@@ -25,7 +27,7 @@ from ..core.backends import configure_logfire, make_backends
 from ..core.report import cost
 from ..core.runner import concurrency
 from . import runs as domain_runs
-from .act import ACT, ADJUDICATED_PATH, COMPANIES_PATH, DEFINITIONS_PATH, INSTRUCTIONS, state
+from .act import ACT, ADJUDICATED_PATH, COMPANIES_PATH, DEFINITIONS_PATH, INSTRUCTIONS, SAMPLE_FIELDS, SAMPLE_PATH, state
 from .schemas import OTHER, SEED_DOMAIN_DEFINITIONS, build, load_definitions
 
 app = typer.Typer(add_completion=False)
@@ -153,18 +155,33 @@ def main():
     """Demo 3: investing-domain classification."""
 
 
-@app.command()
-def fetch(
-    size: int = typer.Option(500, help='companies in the sample, Other included'),
-    per_other: int = typer.Option(30),
-    floor: int = typer.Option(5, help='minimum per subindustry, where its pool allows'),
-    since: int = typer.Option(2019, help='earliest batch year'),
-    keep: list[str] = typer.Option(['roofr'], help='slugs always in the sample, whatever their batch'),
-    seed: int = typer.Option(7),
-    min_description: int = typer.Option(200, help='minimum long_description length in characters'),
-):
-    """Sample active YC companies: domains as even as their pools allow, subindustries proportional within each."""
-    companies = load_mirror()
+def text_sha256(company: dict) -> str:
+    """Fingerprint of the text a model sees, so a restore can tell when YC has since edited a description."""
+    text = f"{company.get('one_liner') or ''}\n{(company.get('long_description') or '').strip()}"
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def record(c: dict, label: tuple[str, str | None]) -> dict:
+    """One row of the local sample: the mirror's company with the reference label it is scored against."""
+    return {
+        'id': c['slug'],
+        'name': c['name'],
+        'one_liner': c['one_liner'],
+        'long_description': c['long_description'].strip(),
+        'label': label[0],
+        'sub_label': label[1],
+        'yc_industry': c['industry'],
+        'yc_subindustry': c.get('subindustry'),
+        'yc_industries': c.get('industries') or [],
+        'tags': c.get('tags') or [],
+        'batch': c.get('batch'),
+        'text_sha256': text_sha256(c),
+    }
+
+
+def draw_sample(companies: list[dict], size: int, per_other: int, floor: int, since: int, keep: list[str],
+                seed: int, min_description: int) -> list[dict]:
+    """Domains as even as their pools allow, subindustries proportional within each, a floor per subindustry."""
     by_slug = {c['slug']: c for c in companies}
     if missing := [s for s in keep if s not in by_slug or not reference_label(by_slug[s])]:
         raise typer.BadParameter(f'cannot keep {missing}: not in the mirror or no YC subindustry')
@@ -181,8 +198,8 @@ def fetch(
     domain_quota = allocate_even({d: sum(n for k, n in sizes.items() if k[0] == d) for d in DOMAINS}, size - per_other)
     domain_quota[OTHER] = per_other
 
-    # The seed fixes the draw, the sorts make it independent of the mirror's ordering. The
-    # mirror itself changes daily, so data/companies.jsonl, not a re-fetch, is the fixed sample.
+    # The seed fixes the draw and the sorts make it independent of the mirror's ordering, but the mirror
+    # changes daily, so the saved sample, not a re-draw, is the fixed dataset.
     rng = random.Random(seed)
     sample: list[dict] = []
     for domain in (*DOMAINS, OTHER):
@@ -193,24 +210,61 @@ def fetch(
         for k in labels:
             chosen = [by_slug[s] for s, v in kept.items() if v == k]
             chosen += rng.sample(sorted(pools[k], key=lambda c: c['slug']), quota[k] - len(chosen))
-            for c in chosen:
-                sample.append({
-                    'id': c['slug'],
-                    'name': c['name'],
-                    'one_liner': c['one_liner'],
-                    'long_description': c['long_description'].strip(),
-                    'label': k[0],
-                    'sub_label': k[1],
-                    'yc_industry': c['industry'],
-                    'yc_subindustry': c.get('subindustry'),
-                    'yc_industries': c.get('industries') or [],
-                    'tags': c.get('tags') or [],
-                    'batch': c.get('batch'),
-                })
+            sample += [record(c, k) for c in chosen]
     rng.shuffle(sample)
+    return sample
 
+
+def restore_sample(companies: list[dict]) -> list[dict]:
+    """The published sample, rebuilt from today's mirror. Labels stay as published: they are the reference."""
+    by_slug = {c['slug']: c for c in companies}
+    sample, gone, edited, relabelled = [], [], [], []
+    for m in read_jsonl(SAMPLE_PATH):
+        c = by_slug.get(m['id'])
+        if not c or not c.get('long_description'):
+            gone.append(m['name'])
+            continue
+        row = record(c, (m['label'], m['sub_label']))
+        if row['text_sha256'] != m['text_sha256']:
+            edited.append(m['name'])
+        if reference_label(c) != (m['label'], m['sub_label']):
+            relabelled.append(m['name'])
+        sample.append(row)
+    typer.echo(f'restored {len(sample)} of {len(sample) + len(gone)} companies from {SAMPLE_PATH}')
+    for what, names in (('no longer in the mirror, left out', gone),
+                        ('description edited since the sample was drawn; new runs see the new text', edited),
+                        ('relabelled by YC since; the sample keeps the published label', relabelled)):
+        if names:
+            typer.echo(f'  {len(names)} {what}: {", ".join(names[:8])}{" ..." if len(names) > 8 else ""}')
+    return sample
+
+
+def require_companies() -> None:
+    if not COMPANIES_PATH.exists():
+        raise typer.BadParameter(f'{COMPANIES_PATH} is missing; run `domains fetch` to build it from the YC mirror')
+
+
+@app.command()
+def fetch(
+    new: bool = typer.Option(False, help=f'draw a fresh sample and overwrite {SAMPLE_PATH}, instead of restoring it'),
+    size: int = typer.Option(500, help='with --new: companies in the sample, Other included'),
+    per_other: int = typer.Option(30, help='with --new'),
+    floor: int = typer.Option(5, help='with --new: minimum per subindustry, where its pool allows'),
+    since: int = typer.Option(2019, help='with --new: earliest batch year'),
+    keep: list[str] = typer.Option(['roofr'], help='with --new: slugs always in the sample, whatever their batch'),
+    seed: int = typer.Option(7, help='with --new'),
+    min_description: int = typer.Option(200, help='with --new: minimum long_description length in characters'),
+):
+    """Build the local company sample from the YC mirror: the published one by default, or a fresh draw."""
+    companies = load_mirror()
+    if new or not SAMPLE_PATH.exists():
+        sample = draw_sample(companies, size, per_other, floor, since, keep, seed, min_description)
+        write_jsonl(SAMPLE_PATH, ({k: r[k] for k in SAMPLE_FIELDS} for r in sample))
+        typer.echo(f'{len(companies)} companies in the mirror; drew {len(sample)} -> {SAMPLE_PATH}')
+    else:
+        sample = restore_sample(companies)
     write_jsonl(COMPANIES_PATH, sample)
-    typer.echo(f'{len(companies)} companies in the mirror; wrote {len(sample)} to {COMPANIES_PATH}')
+    typer.echo(f'wrote {len(sample)} companies with descriptions to {COMPANIES_PATH} (local only)')
     estimate_costs(sample)
 
 
@@ -242,6 +296,7 @@ def define(
     if DEFINITIONS_PATH.exists() and not force:
         raise typer.BadParameter(f'{DEFINITIONS_PATH} exists and may be hand-edited; pass --force to regenerate it')
     configure_logfire()
+    require_companies()
     sample = read_jsonl(COMPANIES_PATH)
     subs = {d: sorted({r['sub_label'] for r in sample if r['label'] == d}) for d in DOMAINS}
     in_sample = {r['id'] for r in sample}
@@ -289,6 +344,7 @@ def classify(
     names = runs.split(',')
     if unknown := [n for n in names if n not in domain_runs.RUNS]:
         raise typer.BadParameter(f'unknown runs {unknown}; one of {", ".join(domain_runs.RUNS)}')
+    require_companies()
     configure_logfire()
     asyncio.run(domain_runs.run(names, build(load_definitions()), ACT.records(limit), tag, retry_errors))
 
@@ -311,6 +367,7 @@ def adjudicate(
     force: bool = typer.Option(False, help='re-label an existing file; rows marked "corrected" are kept as they are'),
 ):
     """Opus labels every disputed company, blind: it sees the company text, not YC's label or any run's pick."""
+    require_companies()
     s = build(load_definitions())
     companies = {r['id']: r for r in ACT.records()}
     picks: dict[str, dict[str, list]] = {}

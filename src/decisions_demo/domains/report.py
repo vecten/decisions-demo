@@ -29,7 +29,7 @@ from rich.table import Table
 
 from ..core.report import console, cost, load, scoreboard
 from ..core.runner import concurrency
-from .act import ACT, ADJUDICATED_PATH, COMPANIES_PATH
+from .act import ACT, ADJUDICATED_PATH, SAMPLE_PATH
 from .runs import pick
 from .schemas import OTHER, Schemas, build, field_name, load_definitions
 
@@ -79,7 +79,7 @@ class Data:
 
     def __init__(self, results: dict[str, dict[str, dict]]):
         self.s: Schemas = build(load_definitions())
-        self.companies = load(COMPANIES_PATH)
+        self.companies = load(SAMPLE_PATH)  # names and labels only, so the report runs without `domains fetch`
         self.results = results
         self.ok = {run: {i: r for i, r in rows.items() if 'error' not in r} for run, rows in results.items()}
         self.picks: dict[str, dict[str, Pair]] = {

@@ -4,6 +4,11 @@ from pathlib import Path
 
 from ..core.act import Act
 
+# The sample as published: ids, names, YC's labels and a hash of each description, no YC text. Committed;
+# `domains fetch` rebuilds COMPANIES_PATH from it, and the report reads it directly.
+SAMPLE_PATH = Path('data/company_sample.jsonl')
+SAMPLE_FIELDS = ('id', 'name', 'label', 'sub_label', 'yc_industry', 'yc_subindustry', 'batch', 'text_sha256')
+# The local copy with descriptions, which every model run reads. Not committed: YC's text is not ours to redistribute.
 COMPANIES_PATH = Path('data/companies.jsonl')
 # Hand-editable taxonomy: one line per domain and per sampled subindustry. Every option
 # description and Noul criterion is built from it, so this is where a fund's own definitions go.

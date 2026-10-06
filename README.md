@@ -41,7 +41,8 @@ uv run --env-file .env jev_vs_sonnet.py     # one command, one schema, two model
 ```
 
 Every demo runs as a few commands that write JSONL into `data/`, and a `report` command that reads those files
-and never calls a model. Each demo's doc lists its commands.
+and never calls a model. Each demo's doc lists its commands. Demo 3's results are committed, so
+`uv run report domains` works straight after cloning, without API keys.
 
 ## How it works
 
@@ -116,11 +117,9 @@ src/decisions_demo/
   domains/                 demo 3: fetch, define, classify, adjudicate, report
 ```
 
-## Data
+## Data and licence
 
-- **Demo 1** uses commands mined from your own Claude Code sessions. They are personal and stay on your
-  machine: `data/commands.jsonl`, `data/labels.jsonl` and the guardrail results are gitignored.
-- **Demo 2** generates its emails with Sonnet. Its data and results are committed once generated.
-- **Demo 3** uses Y Combinator's public company directory through the unofficial
-  [yc-oss](https://github.com/yc-oss/api) mirror, which declares no licence. The definitions, model results,
-  adjudications and figures are committed; the company descriptions themselves are not.
+The code is MIT ([LICENSE](LICENSE)); the data this repository produced is CC BY 4.0. Third-party data is not
+redistributed: YC's company descriptions are rebuilt on your machine by `uv run domains fetch`, and demo 1 mines
+your own Claude Code sessions. [DATA.md](DATA.md) lists which file is which, and credits Y Combinator and the
+yc-oss mirror.

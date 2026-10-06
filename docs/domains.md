@@ -10,8 +10,13 @@ how well Jev's probabilities are calibrated.
 
 ## Data
 
-**Companies.** `domains fetch` samples from the [yc-oss](https://github.com/yc-oss/api) mirror of YC's public
-company directory, an unofficial mirror that declares no licence:
+**Companies.** The sample comes from the [yc-oss](https://github.com/yc-oss/api) mirror of YC's public company
+directory, an unofficial mirror that declares no licence, so the repository publishes the sample without the
+descriptions: `data/company_sample.jsonl` holds each company's id, name, YC labels, batch and a hash of its
+description. `domains fetch` rebuilds the local copy with descriptions (`data/companies.jsonl`) for exactly
+those companies, and lists any whose description YC has edited since (the hash no longer matches) or that left
+the directory. The report needs only the published sample; model runs need the local copy.
+`domains fetch --new` draws a fresh sample instead, with these rules:
 
 - active companies from batches 2019 onwards with a description of at least 200 characters;
 - 500 in total: 30 labelled Other and the rest spread as evenly as their pools allow across YC's six domains
@@ -19,7 +24,8 @@ company directory, an unofficial mirror that declares no licence:
   or 85);
 - within each domain, subindustries in proportion to their pool, with a floor of 5 where the pool allows;
 - one company, Roofr, kept in regardless of batch because it is a clear example of a disputable YC label;
-- a fixed seed. The mirror changes daily, so the saved sample, not a re-fetch, is the fixed dataset.
+- a fixed seed. The mirror changes daily, so a fresh draw later gives a different sample; the published
+  sample, not a re-draw, is the fixed dataset.
 
 The state every backend sees is the company's name, one-liner and long description, nothing YC added.
 
@@ -83,7 +89,8 @@ flattered against this reference: read it as Claude's careful reading, not groun
 ## Running it
 
 ```
-uv run domains fetch                       # sample -> data/companies.jsonl, and a cost estimate per run
+uv run report domains                      # works straight away, from the committed results
+uv run domains fetch                       # rebuild the sample with descriptions, and a cost estimate per run
 uv run domains define                      # subindustry definitions, once -> data/domain_definitions.json
 uv run domains classify                    # all runs; --runs to pick, --limit N for a quick check
 uv run domains classify --runs jev_flat,jev_sequential,jev_fanout,jev_nouls --tag rerun
@@ -94,7 +101,8 @@ uv run report domains
 ```
 
 `fetch` prints an estimated cost for every run before you spend anything, and `adjudicate --dry-run` does the
-same for Opus.
+same for Opus. `define --force`, `classify` and `adjudicate --force` overwrite the committed files; to try your own
+definitions or a fresh sample (`fetch --new`), work on a branch.
 
 ## What the report shows
 
