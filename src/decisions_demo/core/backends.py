@@ -157,7 +157,7 @@ def make_backends(which: list[str], sonnet_thinking: bool = True) -> list[Backen
         # Slow, expensive reference judge for labels and adjudication. Always thinks, in every act.
         # Opus 5.5 defaults to effort medium; pin high.
         'opus': PydanticAIBackend('opus', 'anthropic:claude-opus-5-5', {**claude_settings(True), 'anthropic_effort': 'high'}),
-        # Same schema through structured outputs. Confidence is self-reported, not a calibrated probability.
+        # Same schema through structured outputs. Its confidence is self-reported, not a calibrated probability.
         'luna_fallback': PydanticAIBackend('luna_fallback', 'openai:gpt-6-luna'),
         'luna': LunaDecisionsBackend(),
     }

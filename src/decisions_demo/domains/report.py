@@ -10,7 +10,7 @@ Two references:
 
 Sections: scoreboards, level 2 given level 1, per domain and per subindustry (n >= 10), routing Jev -> Sonnet,
 routed companies, confusion pairs and matrix, flat vs fan-out, calibration, Nouls, duality, stability,
-latency, and a Nouls heatmap saved for the slides.
+latency, and a Nouls heatmap saved as images.
 
 The B2B Noul is reported apart from the five sector Nouls (see B2B_NOTE): it asks whether a company sells to
 businesses, which is a different question from YC's B2B label, so it is shown as a fire rate and kept out of
@@ -414,7 +414,7 @@ def latency(d: Data) -> None:
 
 
 def heatmap(d: Data) -> list[Path]:
-    """Companies (rows, grouped by YC label) x the six Nouls, P(yes). One PNG per theme, for the slides."""
+    """Companies (rows, grouped by YC label) x the six Nouls, P(yes). One PNG per theme (light, dark)."""
     if 'jev_nouls' not in d.ok:
         return []
     import matplotlib

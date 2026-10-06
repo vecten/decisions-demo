@@ -2,6 +2,15 @@
 __pycache__/
 .DS_Store
 .logfire/
-# Mined session commands, labels and model runs: personal data, keep local
-data/
 .env
+
+# Demo 1 mines your own Claude Code sessions: commands, labels and every result that can quote them stay local.
+data/commands.jsonl
+data/labels.jsonl
+data/results/guardrail.*
+# Demo 3's company descriptions come from YC's directory via an unlicensed mirror: not redistributed.
+data/companies.jsonl
+# Superseded runs kept for comparison, local only.
+data/backups/
+# Left behind by `domains classify --retry-errors` if it is interrupted.
+*.retry.jsonl

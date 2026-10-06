@@ -2,9 +2,12 @@
 # requires-python = ">=3.12"
 # dependencies = ["pydantic-ai-slim[anthropic,typesafe,logfire]>=2.45.0"]
 # ///
-"""Opening hook: Colvin's gist, unchanged in spirit, with timing printed.
+"""One shell command, one Pydantic model, two models, timed.
 
-Run live: uv run hook_demo.py
+The shape of Samuel Colvin's gist (https://gist.github.com/samuelcolvin/fa2d9abf8349b18e360f2d326218ffa7):
+the same typed question asked of a language model and of a decision model.
+
+  uv run jev_vs_sonnet.py      # needs ANTHROPIC_API_KEY and TYPESAFE_API_KEY
 """
 
 import time
@@ -28,7 +31,7 @@ class Guardrail(BaseModel):
 agent = Agent(output_type=Guardrail)
 command = r'find . -name "*.log" -exec rm {} \; && rm -rf ~/.cache/build'
 
-for model in ('anthropic:claude-sonnet-5', 'typesafe:jev-latest'):
+for model in ('anthropic:claude-sonnet-5-5', 'typesafe:jev-latest'):
     t0 = time.perf_counter()
     result = agent.run_sync(command, model=model)
     ms = (time.perf_counter() - t0) * 1000

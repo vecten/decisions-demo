@@ -35,7 +35,7 @@ run_act_app = typer.Typer(add_completion=False)
 def run(
     act: str = typer.Option(..., help=' | '.join(ACTS)),
     backends: str = typer.Option('sonnet', help='comma list: jev,sonnet,luna,luna_fallback,opus'),
-    limit: int = typer.Option(0, help='run only the first N records (live demo)'),
+    limit: int = typer.Option(0, help='run only the first N records (quick check)'),
 ):
     """Batch one act through one or more backends, JSONL out per backend."""
     spec = _act(act).ACT

@@ -36,8 +36,8 @@ def routing_fit(results: dict[str, dict[str, dict]], labels: dict[str, dict], ba
     """Pick a confidence band to route to the language model. Anything inside the band goes to Sonnet.
 
     Prints, for a few band widths, how many items get routed and the accuracy of the
-    combined system (Jev outside the band, Sonnet inside). This is the slide that
-    shows 'only 10-20% needed the expensive model'.
+    combined system (Jev outside the band, Sonnet inside): how many items actually
+    need the expensive model, and what routing them buys.
     """
     if backend not in results or 'sonnet' not in results:
         return

@@ -1,0 +1,86 @@
+{
+  "B2B": {
+    "definition": "Software or services sold to businesses, such as developer tools, infrastructure, sales and marketing, HR, legal, security, analytics or supply chain.",
+    "subindustries": {
+      "Analytics": "Sells software that collects, models, or visualizes business data to produce metrics, dashboards, or predictive insights for decision-makers, as distinct from tools that primarily execute a business function like marketing or sales.",
+      "Engineering, Product and Design": "Sells developer- and product-team-facing tools such as APIs, SDKs, UI frameworks, identity verification building blocks, or integration platforms used to build and ship software products, rather than tools for running infrastructure or back-office operations.",
+      "Finance and Accounting": "Sells software or services to businesses for bookkeeping, tax preparation, accounts payable/receivable, or CFO-level financial management, as opposed to general operations or HR-focused payroll tools.",
+      "Human Resources": "Sells software to businesses for managing employee wellbeing, performance, engagement, benefits, or core HR records, distinct from tools focused specifically on sourcing and hiring new talent.",
+      "Infrastructure": "Sells technical building blocks such as compute deployment, identity and access management, compliance automation, or context/data handling systems that other software or engineering teams run on top of, rather than end-user-facing applications.",
+      "Legal": "Sells software or services to businesses or law firms for contract review, compliance, litigation support, or in-house legal team workflows, as distinct from general compliance tools aimed at non-legal business functions.",
+      "Marketing": "Sells software to businesses for acquiring, retaining, or engaging customers through campaigns, lead generation, SEO, or outbound messaging, as opposed to tools focused on closing or managing sales deals.",
+      "Office Management": "Sells software or hardware to businesses for managing physical workspaces, facilities, maintenance, or office logistics, distinct from supply chain tools that manage goods movement across a broader value chain.",
+      "Operations": "Sells software to businesses for managing internal workflows, customer support, IT service management, or lab/process operations that don't fit cleanly into finance, HR, sales, or marketing functions.",
+      "Productivity": "Sells general-purpose software to businesses that helps individuals or teams organize knowledge, automate tasks, or work faster across functions, rather than software built for a single specific business department.",
+      "Recruiting and Talent": "Sells software or services to businesses specifically for sourcing, screening, and hiring candidates, as distinct from broader HR platforms that manage employees after they are hired.",
+      "Retail": "Sells software to retail, restaurant, or merchant businesses for managing storefronts, product visuals, reservations, or consumer-facing commerce operations, as opposed to backend supply chain or logistics tools.",
+      "Sales": "Sells software to businesses for managing sales pipelines, commissions, outbound selling, or revenue operations, as distinct from marketing tools focused on generating top-of-funnel demand.",
+      "Security": "Sells software to businesses for protecting systems, data, or communications through encryption, access controls, threat detection, or compliance questionnaire automation, as distinct from general infrastructure identity tools used for operational access management.",
+      "Supply Chain and Logistics": "Sells software or platforms to businesses for managing the movement, wholesale distribution, or logistics coordination of physical goods between suppliers, carriers, and buyers."
+    }
+  },
+  "Consumer": {
+    "definition": "Products individuals buy or use for themselves, such as apps, content, social, gaming, food, apparel, home goods, travel or consumer electronics.",
+    "subindustries": {
+      "Apparel and Cosmetics": "Companies that sell clothing, accessories, beauty, and personal care products directly to individual consumers, whether through their own brand, a curated multi-brand storefront, or tools that power shopping and investment in these physical goods, distinct from Home and Personal which covers non-wearable household and self-care services.",
+      "Consumer Electronics": "Companies that design, manufacture, or rent physical hardware devices for individual consumer use such as phones, wearables, scanners, smart locks, and similar gadgets, excluding devices whose primary purpose is immersive VR/AR experiences which fall under Virtual and Augmented Reality.",
+      "Content": "Companies that sell media, editorial, or informational content such as articles, videos, audiobooks, or curated product discovery feeds directly to individual consumers for reading, listening, or viewing, distinct from Social where the core offering is interpersonal connection or community interaction rather than consumption of produced content.",
+      "Food and Beverage": "Companies that sell edible products, beverages, or grocery and restaurant delivery services directly to individual consumers for personal consumption.",
+      "Gaming": "Companies that sell interactive games, game-adjacent entertainment products, or platforms for playing and wagering on games directly to individual consumers, distinct from Virtual and Augmented Reality where the core value is immersive 3D/spatial simulation rather than gameplay itself.",
+      "Home and Personal": "Companies that sell services, software, or products to individual consumers for managing their homes, personal errands, or personal wellbeing such as home maintenance, convenience delivery to residences, legal document preparation, or fitness instruction, distinct from Food and Beverage which covers edible goods and from Apparel and Cosmetics which covers wearable and beauty products.",
+      "Job and Career Services": "Companies that sell tools, marketplaces, or content to individual consumers for finding employment, building professional skills, or advancing their careers, including platforms matching workers with hiring opportunities.",
+      "Social": "Companies that sell platforms or tools whose core value is enabling individuals to connect, communicate, or build relationships with other people, including video meetings, matchmaking, and interactive feeds, distinct from Content where the core value is consuming produced media rather than interacting with other users.",
+      "Transportation Services": "Companies that sell mobility-related services to individual consumers such as ride-sharing, carpooling, vehicle ownership management, or tools for navigating transportation infrastructure like parking and tickets.",
+      "Travel, Leisure and Tourism": "Companies that sell trip planning, booking, accommodation, visa, or leisure experience services directly to individual consumers for travel and recreation purposes, distinct from Transportation Services which covers the physical movement and vehicle logistics rather than trip planning and destination experiences.",
+      "Virtual and Augmented Reality": "Companies that sell software, platforms, or tools for creating, deploying, or experiencing immersive 3D, virtual, or augmented reality content directly to individual consumers, distinct from Gaming where the core value is traditional interactive gameplay rather than spatial immersion technology."
+    }
+  },
+  "Fintech": {
+    "definition": "Financial services or financial infrastructure, such as payments, banking, lending, insurance, asset management or consumer finance.",
+    "subindustries": {
+      "Asset Management": "Companies that sell investment management, portfolio construction, or wealth advisory tools and platforms to individual investors, funds, or institutions seeking to grow or manage their assets, as distinct from Banking and Exchange which provides custody, trading infrastructure, or currency accounts rather than investment decision-making.",
+      "Banking and Exchange": "Companies that sell deposit accounts, currency exchange, crypto trading infrastructure, or core banking and compliance software to consumers, businesses, or financial institutions, as distinct from Payments which focuses on moving money for transactions rather than holding or exchanging assets.",
+      "Consumer Finance": "Companies that sell personal financial planning, benefits access, or household financial services directly to individual consumers or underserved demographic groups to manage their everyday financial lives, as distinct from Credit and Lending which focuses specifically on providing loans or credit products.",
+      "Credit and Lending": "Companies that sell loans, credit lines, or lending infrastructure and automation to individuals, small businesses, or financial institutions seeking to extend or obtain capital, as distinct from Consumer Finance which addresses broader personal financial management rather than the provision of credit itself.",
+      "Insurance": "Companies that sell insurance policies, brokerage services, or underwriting and risk-assessment technology to consumers or businesses seeking to protect against financial loss, as distinct from Consumer Finance and Credit and Lending which do not involve risk pooling or policy underwriting.",
+      "Payments": "Companies that sell transaction processing, payment acceptance, fraud prevention, or money transfer infrastructure to businesses or consumers conducting purchases or transfers, as distinct from Banking and Exchange which provides account holding and currency conversion rather than per-transaction payment facilitation."
+    }
+  },
+  "Healthcare": {
+    "definition": "Medicine and health, such as care delivery, healthcare IT, diagnostics, medical devices, therapeutics, drug discovery, wellness or industrial biotech.",
+    "subindustries": {
+      "Consumer Health and Wellness": "Sells health, wellness, fertility, or genomic products and services directly to individual consumers for self-directed insight or lifestyle improvement rather than for clinical diagnosis or treatment by a provider.",
+      "Diagnostics": "Sells tests, assays, imaging, or data-analysis platforms to clinicians, labs, or patients that detect, measure, or characterize a disease state, as distinct from devices that treat or manage the condition once identified.",
+      "Drug Discovery and Delivery": "Sells research platforms, computational tools, or delivery technologies to biotech and pharmaceutical companies that identify, design, or administer new drug candidates, rather than selling the finished therapeutic itself.",
+      "Healthcare IT": "Sells software, data infrastructure, or AI systems to healthcare providers, payers, or administrative staff that manage clinical, financial, or operational workflows rather than directly diagnosing, treating, or caring for patients.",
+      "Healthcare Services": "Sells care delivery, coordination, or support services directly to patients or provider organizations, encompassing clinical, administrative, or wellness services that are performed by people rather than delivered through software or hardware products.",
+      "Industrial Bio": "Sells engineered organisms, biomanufacturing processes, or bio-based materials to industrial, agricultural, or environmental customers for non-therapeutic applications such as chemical production or pollution remediation.",
+      "Medical Devices": "Sells physical hardware, implants, or wearable instruments to clinicians or patients that directly monitor, diagnose, or treat a medical condition through interaction with the body, rather than through software or biochemical means.",
+      "Therapeutics": "Sells drug compounds, biologics, or genetic medicines intended to treat or cure disease, developed for regulatory approval and administration to patients rather than for diagnostic or research use."
+    }
+  },
+  "Industrials": {
+    "definition": "Physical industry, such as manufacturing, robotics, energy, climate, aerospace, defense, drones, automotive or agriculture.",
+    "subindustries": {
+      "Agriculture": "Companies that sell crop, livestock, or farm-management products and services\u2014such as food production systems, farm labor software, pesticide discovery, or plant biology research tools\u2014to growers, agribusinesses, and food producers.",
+      "Automotive": "Companies that sell vehicles, autonomous driving systems, or supporting software and hardware (such as mapping or predictive maintenance for trains and heavy vehicles) to consumers, fleet operators, and transit agencies for ground transportation of people or goods, excluding aerial drones and space vehicles.",
+      "Aviation and Space": "Companies that sell spacecraft, satellites, aircraft engines, or related space and atmospheric infrastructure and data services to government agencies, aerospace firms, and commercial operators for operations beyond or above standard ground transit.",
+      "Climate": "Companies that sell carbon reduction, capture, removal, or emissions-accounting products and services to industrial, corporate, or agricultural customers seeking to mitigate or measure climate impact, excluding core energy generation or vehicle technologies.",
+      "Defense": "Companies that sell weapons systems, protective equipment, surveillance, or countermeasure technologies to military, government, or security customers for national defense and combat applications.",
+      "Drones": "Companies that sell unmanned aerial vehicles, their navigation or ground-control systems, or drone-enabled inspection and delivery services to commercial, government, or emergency-response customers, excluding space-based or crewed aircraft systems.",
+      "Energy": "Companies that sell power generation, grid infrastructure, metering, or energy management products and services to utilities, industrial customers, or consumers for the production, distribution, or monitoring of electricity and related resources.",
+      "Manufacturing and Robotics": "Companies that sell industrial automation systems, robots, engineering software, or factory infrastructure to manufacturers and industrial operators to produce goods or automate physical and computational workflows, excluding vehicle-specific or agriculture-specific applications."
+    }
+  },
+  "Real Estate and Construction": {
+    "definition": "Property and the built environment, such as housing, buying, selling or managing real estate, and construction.",
+    "subindustries": {
+      "Construction": "Sells software, AI tools, or payment and compliance infrastructure to construction companies, contractors, engineers, suppliers, and inspectors to plan, build, inspect, or manage the physical construction of structures.",
+      "Housing and Real Estate": "Sells marketplaces, marketing platforms, search tools, or transaction and inspection services to homebuyers, renters, brokers, landlords, and agents to find, market, buy, sell, or manage already-built residential or commercial properties."
+    }
+  },
+  "Other": {
+    "definition": "Education, government, nonprofits, or anything none of the six domains above describes.",
+    "subindustries": {}
+  }
+}

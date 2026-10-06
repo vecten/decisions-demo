@@ -1,4 +1,4 @@
-"""Act three: two-level investing-domain classification of real YC companies.
+"""Demo 3: two-level investing-domain classification of real YC companies.
 
   domains fetch          # ~500 active YC companies since 2019, proportional by subindustry, plus 30 Other
   domains define         # Sonnet writes one line per sampled subindustry, once -> data/domain_definitions.json
@@ -150,7 +150,7 @@ def estimate_costs(sample: list[dict]) -> None:
 
 @app.callback()
 def main():
-    """Act three: investing-domain classification."""
+    """Demo 3: investing-domain classification."""
 
 
 @app.command()

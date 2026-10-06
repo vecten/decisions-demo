@@ -1,74 +1,126 @@
-# decisions-demo
+# Decision models in practice
 
-Sketch of a demo harness for decision models.
+An agent makes many small decisions per task: is this command safe, does this email fit the thesis, which
+sector is this company in. Today each one is usually a full language-model call: seconds of generation, output
+billed at several times the input price, and a confidence that comes back as prose.
+
+Decision models answer the same typed question without generating text. You send a Pydantic model; they return
+the answer and a probability for every option. This repository asks the same questions of a decision model
+(TypeSafe's Jev) and of Claude, on three tasks, and measures agreement, latency, cost and calibration. Its
+design is one pattern throughout: **the decision model answers everything, and only the cases it is unsure
+about go to the language model.**
+
+It is the code and data behind a series of blog posts. For the background on what decision models are, why
+they are faster and cheaper, and what they can't do, see [docs/decision-models.md](docs/decision-models.md).
+
+## The demos
+
+**1. Guardrail: should an agent run this shell command?**
+100 real Bash commands from Claude Code sessions, judged by Jev and Sonnet on four questions (accept, review or
+reject; destructive; outside the working directory; misleading). Then a confidence band decides which commands
+Jev settles alone and which go to Sonnet. [docs/guardrail.md](docs/guardrail.md)
+
+**2. Deal-flow triage for a venture fund.**
+50 synthetic inbound emails triaged against a fund thesis: stage, sector, fit, priority, next step. Jev
+triages every email; Sonnet writes a partner note only for the few Jev ranks high, and the report prices both
+halves. [docs/dealflow.md](docs/dealflow.md)
+
+**3. Investing domains: classifying 500 real companies into a two-level taxonomy.**
+Y Combinator companies classified into domain → subindustry from a fund's own written definitions. Four ways of
+asking Jev the same question, Sonnet as the comparison, Opus adjudicating the disputed cases, and calibration
+of Jev's probabilities. [docs/domains.md](docs/domains.md)
+
+## Quick start
+
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```
 uv sync
-export TYPESAFE_API_KEY=...   ANTHROPIC_API_KEY=...   OPENAI_API_KEY=...   LOGFIRE_TOKEN=...
-
-uv run hook_demo.py                                   # 0. the gist, timed
-uv run mine-sessions                                  # 1. ~/.claude/projects -> data/commands.jsonl (then read it!)
-uv run label                                          # 2. Opus reference labels -> data/labels.jsonl (current file: Opus 5)
-uv run run-act --act guardrail --backends sonnet,jev  # 3. precompute
-uv run report guardrail                               # 4. scoreboard, disagreements, routing fit
-uv run run-act --act guardrail --backends sonnet_no_thinking   # act 1's thinking-off Sonnet column
-uv run dealflow generate && uv run dealflow triage --backends jev,sonnet && uv run dealflow notes
-uv run report dealflow
-
-uv run domains fetch                                  # act 3: 500 YC companies -> data/companies.jsonl, plus a cost preview
-uv run domains define                                 # Sonnet writes subindustry definitions once; edit data/domain_definitions.json
-uv run domains classify                               # 4 Jev question shapes and Sonnet on all 500, sonnet_thinking on 100
-uv run domains classify --runs jev_flat,jev_sequential,jev_fanout,jev_nouls --tag rerun   # Jev stability run
-uv run domains classify --runs sonnet --retry-errors  # re-ask only rows that failed (overloaded, timeouts)
-uv run domains adjudicate --dry-run                   # how many companies a run disputes with YC, and the Opus cost
-uv run domains adjudicate                             # Opus labels them blind -> data/domain_adjudicated.jsonl (hand-editable)
-uv run report domains                                 # every act 3 table; Nouls heatmap -> data/figures/*.png
+cp .env.example .env        # add TYPESAFE_API_KEY and ANTHROPIC_API_KEY; OPENAI_API_KEY and LOGFIRE_TOKEN are optional
+uv run --env-file .env jev_vs_sonnet.py     # one command, one schema, two models, timed
 ```
 
-## Models, and when Sonnet thinks
+Every demo runs as a few commands that write JSONL into `data/`, and a `report` command that reads those files
+and never calls a model. Each demo's doc lists its commands.
 
-Every backend gets the same Pydantic model for a question. The backends live in `src/decisions_demo/core/backends.py`:
+## How it works
 
-| Backend name | Model | Thinking |
+### One schema, every backend
+
+Each question is a Pydantic model whose field docstrings are the questions, written to be read literally. The
+same model is sent to every backend through [Pydantic AI](https://ai.pydantic.dev). Jev turns a `bool` into a
+yes/no question, a `Literal` or `Enum` into a choice, and an ordered `IntEnum` into a rubric, and returns a
+probability for every option. Claude gets the same model as structured output.
+
+| Backend | Model | Thinking |
 |---|---|---|
-| `jev` | `typesafe:jev-latest` | none; returns a probability per option (`probabilities` in the results) |
-| `sonnet` | `anthropic:claude-sonnet-5-5` | **set per act**, see below |
+| `jev` | `typesafe:jev-latest` | none; returns a probability per option |
+| `sonnet` | `anthropic:claude-sonnet-5-5` | set per demo (below) |
 | `sonnet_thinking` | `anthropic:claude-sonnet-5-5` | always on (adaptive) |
-| `sonnet_no_thinking` | `anthropic:claude-sonnet-5-5` | always off (`between_tools`, see below) |
-| `opus` | `anthropic:claude-opus-5-5` | always on (adaptive, effort pinned to high; Opus 5.5 defaults to medium), in every act |
+| `sonnet_no_thinking` | `anthropic:claude-sonnet-5-5` | always off |
+| `opus` | `anthropic:claude-opus-5-5` | always on, effort high; used for reference labels and adjudication |
+| `luna_fallback` | `openai:gpt-6-luna` | optional comparison in demo 1, through structured outputs |
 
-Earlier Sonnet 5 runs are kept in `data/results/sonnet-5/`, outside the reports.
+Backends live in `src/decisions_demo/core/backends.py`. Each demo is an `Act` in the code
+(`src/decisions_demo/<demo>/act.py`): a dataset, the text each backend sees per record, and settings such as
+`sonnet_thinking`, which decides what `sonnet` means in that demo.
 
-What `sonnet` means is set by `sonnet_thinking=` on the act's `Act` in its `act.py`. The runner passes it to
-`make_backends(names, act.sonnet_thinking)`. Results files are named after the backend
-(`data/results/<act>.<backend>.jsonl`), so `sonnet` is the act's main Sonnet run and the explicit names are the
-comparison runs.
+| Demo | `sonnet` (main run) | Comparison run |
+|---|---|---|
+| 1 guardrail | thinking on; also where uncertain commands are routed | `sonnet_no_thinking` |
+| 2 dealflow | thinking on, for triage and partner notes | none |
+| 3 domains | thinking off | `sonnet_thinking` on 100 of the 500 companies |
 
-| Act | `sonnet` (main run) | Comparison run | Opus |
-|---|---|---|---|
-| 1 guardrail | thinking on; also where routed commands escalate to | `sonnet_no_thinking`, all 100 commands | reference labels (`label`) |
-| 2 dealflow | thinking on, for triage and the partner notes | none | not used |
-| 3 domains | thinking off | `sonnet_thinking`, the first 100 of the 500 (the sample is shuffled) | adjudication of disputed companies |
+### How thinking changes the request
 
-Thinking changes more than depth: it decides how Pydantic AI sends the schema to Claude (`claude_settings` in
-`core/backends.py`).
+Thinking changes more than how hard Claude works: it decides how Pydantic AI sends the schema
+(`claude_settings` in `core/backends.py`).
 
-- **Off:** Sonnet 5.5 rejects `{"type": "disabled"}`, so "off" is `{"type": "between_tools"}`, the closest
-  setting. The schema goes as a tool definition, verbatim. Claude can only answer with the listed options and
-  reads the same option descriptions Jev does. The tool definition is identical on every call of a batch, so it
-  is prompt-cached (`anthropic_cache_tool_definitions`), which cuts act 3's Sonnet input cost by about 75%.
-  Sonnet 5.5 caches from 512 tokens, so act 1's schema caches too.
-  The 5.5 models can't be forced to call a tool, so with thinking off Sonnet first writes a short visible
-  rationale (about 150 tokens), then calls the tool. The answer is only ever the tool call's arguments,
-  validated against the schema; the text is stored as `rationale` in each result and shown in the reports.
-  So on 5.5 "off" means "reasons in plain text instead of in thinking blocks", not "no reasoning".
-- **On:** thinking can't be combined with a forced tool call, so Pydantic AI switches to native structured output
-  in strict mode, uncached. Strict mode keeps each option's description but stops enforcing the option list, so
-  an answer outside it is caught by Pydantic validation and retried. Strict mode also requires a `type` on every
-  option. Act 3 builds its options with `schemas.options()`, which adds one; Pydantic AI's `Choices` and
-  `BoolCriteria` don't, which is one reason act 3's Nouls run on Jev only.
+- **Thinking off.** The 5.5 models don't accept `{"type": "disabled"}`, so "off" is
+  `{"type": "between_tools"}`, the closest setting. The schema goes as a tool definition, verbatim: Claude can
+  only answer with the listed options and reads the same option descriptions Jev does. The tool definition is
+  identical on every call of a batch, so it is prompt-cached (`anthropic_cache_tool_definitions`), which cuts
+  demo 3's Sonnet input cost by about three quarters. The 5.5 models can't be forced to call a tool, so Claude
+  first writes a short visible rationale and then calls it. The answer is only ever the tool call's arguments,
+  validated against the schema; the text is stored as `rationale` in each result. On these models "off" means
+  "reasons briefly in plain text", not "no reasoning".
+- **Thinking on.** Thinking can't be combined with a forced tool call, so Pydantic AI uses native structured
+  output in strict mode, uncached. Strict mode keeps each option's description but stops enforcing the option
+  list itself, so an answer outside it is caught by Pydantic validation and retried. Strict mode also requires a
+  `type` on every option, which Pydantic AI's `Choices` and `BoolCriteria` don't emit; demo 3 builds its options
+  with its own `schemas.options()` for that reason, and its yes/no questions run on Jev only.
 
-`core/report.py` prices cache writes at 1.25x and cache reads at 0.1x of the input price, so reported costs
-include the caching.
+### Results, cost and latency
 
-Nothing is implemented beyond what you see; this is the skeleton to hand to Claude Code.
+- Every run writes `data/results/<demo>.<run>.jsonl`: one row per record with the parsed output, Jev's
+  confidence and full probabilities, Claude's rationale, wall-clock latency, and input, output and cache tokens.
+  A failed call is kept as a row with an `error`.
+- Cost is computed from those tokens and the price table in `core/report.py`, with cache writes at 1.25× and
+  cache reads at 0.1× the input price. Jev bills input only.
+- Latency is measured with several requests in flight per backend (`core/runner.py`); the reports state the
+  concurrency next to the numbers.
+- Reference labels come from a careful model (Opus with thinking) or, in demo 2, from the data generator, plus
+  hand corrections. They are references, not ground truth, and each demo's doc says how they were made.
+
+### Repository layout
+
+```
+jev_vs_sonnet.py           one command, two models, timed
+docs/                      background and one document per demo
+data/                      inputs, reference labels, results and figures (see Data below)
+src/decisions_demo/
+  cli.py                   run-act and report, across demos
+  core/                    backends, batch runner, scoreboard and cost
+  guardrail/               demo 1: mine-sessions, label, report
+  dealflow/                demo 2: generate, triage, notes, report
+  domains/                 demo 3: fetch, define, classify, adjudicate, report
+```
+
+## Data
+
+- **Demo 1** uses commands mined from your own Claude Code sessions. They are personal and stay on your
+  machine: `data/commands.jsonl`, `data/labels.jsonl` and the guardrail results are gitignored.
+- **Demo 2** generates its emails with Sonnet. Its data and results are committed once generated.
+- **Demo 3** uses Y Combinator's public company directory through the unofficial
+  [yc-oss](https://github.com/yc-oss/api) mirror, which declares no licence. The definitions, model results,
+  adjudications and figures are committed; the company descriptions themselves are not.

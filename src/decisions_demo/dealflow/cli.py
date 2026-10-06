@@ -1,4 +1,4 @@
-"""Act two: deal-flow triage. System One triages everything, System Two writes notes for the few.
+"""Demo 2: deal-flow triage. System One triages everything, System Two writes notes for the few.
 
   dealflow generate      # Sonnet writes 50 synthetic inbound emails with intended labels
   dealflow triage --backends jev,sonnet
