@@ -1,6 +1,7 @@
 """Demo 3 report: two-level domain classification against YC's labels and the adjudicated reference.
 
-Reads data/companies.jsonl, data/results/domains.*.jsonl and data/domain_adjudicated.jsonl; never calls a model.
+Reads data/company_sample.jsonl (names and YC labels only, so it runs without `domains fetch`),
+data/results/domains.*.jsonl and data/domain_adjudicated.jsonl; never calls a model.
 
 Two references:
   YC          YC's own industry -> subindustry. Noisy: on disputed companies Opus often disagrees with it.

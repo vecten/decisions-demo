@@ -33,7 +33,8 @@ from .schemas import OTHER, SEED_DOMAIN_DEFINITIONS, build, load_definitions
 app = typer.Typer(add_completion=False)
 
 # Unofficial mirror of YC's public company directory (github.com/yc-oss/api), refreshed
-# daily. Fine for an internal demo; check its terms before using it for anything client-facing.
+# daily. It declares no licence and the descriptions belong to YC and the companies, so they are
+# fetched locally and never committed; see DATA.md.
 YC_COMPANIES_URL = 'https://yc-oss.github.io/api/companies/all.json'
 DOMAINS = tuple(d for d in SEED_DOMAIN_DEFINITIONS if d != OTHER)
 
