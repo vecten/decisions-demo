@@ -4,9 +4,10 @@
 the fund's own definitions, and how should the question be asked?
 
 Funds tag every company they look at with the sectors they invest in, usually by hand and inconsistently. This
-demo classifies 500 real Y Combinator companies into domain → subindustry with Jev and with Claude Sonnet,
-compares four ways of asking Jev the same thing, routes the companies Jev is unsure about to Sonnet, and checks
-how well Jev's probabilities are calibrated.
+demo classifies 500 real Y Combinator companies into domain → subindustry with two decision models, Jev and
+OpenAI's Luna, and with Claude Sonnet. It compares four ways of asking a decision model the same thing, routes
+the companies the decision model is unsure about to Sonnet, and checks how well the probabilities are
+calibrated.
 
 ## Data
 
@@ -42,14 +43,19 @@ freely; `define` won't overwrite it without `--force`.
 
 ## The questions
 
-Four shapes on Jev, all built from the same definitions (`domains/schemas.py`):
+Four shapes, each asked of Jev and of Luna, all built from the same definitions (`domains/schemas.py`):
 
 | Run | Shape |
 |---|---|
-| `jev_flat` | one Choice over all 50 subindustries plus Other; the domain is the subindustry's parent |
-| `jev_sequential` | a domain Choice, then a Choice over the winning domain's subindustries: two calls |
-| `jev_fanout` | the domain Choice plus all six per-domain subindustry Choices in one call; the subindustry is read from the winning domain |
-| `jev_nouls` | six independent yes/no questions, "does this company operate in X?"; the multi-label footprint. Other has no Noul: it is every Noul being low |
+| `jev_flat`, `luna_flat` | one Choice over all 50 subindustries plus Other; the domain is the subindustry's parent |
+| `jev_sequential`, `luna_sequential` | a domain Choice, then a Choice over the winning domain's subindustries: two calls |
+| `jev_fanout`, `luna_fanout` | the domain Choice plus all six per-domain subindustry Choices in one call; the subindustry is read from the winning domain |
+| `jev_nouls`, `luna_nouls` | six independent yes/no questions, "does this company operate in X?"; the multi-label footprint. Other has no Noul: it is every Noul being low |
+
+Jev and Luna get identical question text: both run through Pydantic AI's decision-model layer, which builds
+each question from the field description and each option from its definition, and `core/luna.py` only
+translates that into OpenAI's wire format (a choice for a Choice, a predicate for a Noul). The 51-option flat
+Choice is within both models' limit of 255 options.
 
 Sonnet answers one nested structured output: a domain plus a subindustry valid for that domain, so an invalid
 pair such as Fintech → Gaming can't be expressed.
@@ -64,6 +70,8 @@ adds a `type` to each option, which Claude's strict mode requires.
 |---|---|---|---|
 | `jev_flat`, `jev_sequential`, `jev_fanout`, `jev_nouls` | `typesafe:jev-latest` | none | 500 |
 | `…_rerun` of the four above | `typesafe:jev-latest` | none | 500, to measure run-to-run stability |
+| `luna_flat`, `luna_sequential`, `luna_fanout`, `luna_nouls` | `gpt-6-luna`, OpenAI Decisions API (public beta) | none | 500 (fan-out: 466, see caveats); run 2026-10-09 |
+| `…_rerun` of the four Luna runs | `gpt-6-luna` | none | 500, the same day |
 | `sonnet` | `claude-sonnet-5-5` | off | 500 |
 | `sonnet_thinking` | `claude-sonnet-5-5` | on | the first 100 (the sample is shuffled) |
 | adjudication | `claude-opus-5-5` | on, effort high | every disputed company |
@@ -76,7 +84,7 @@ the short visible rationale Sonnet 5.5 writes when thinking is off.
 
 ## Adjudication
 
-A company is disputed when any of the main runs (`jev_flat`, `jev_sequential`, `jev_fanout`, `sonnet`,
+A company is disputed when any of the main runs (the three Choice shapes on Jev and on Luna, `sonnet` and
 `sonnet_thinking`) disagrees with YC on domain and subindustry. `domains adjudicate` has Opus label every
 disputed company **blind**: it sees the company text, not YC's label or any run's pick, and returns a primary
 pair, an optional secondary pair if the company genuinely operates in two, and a one-sentence explanation. The
@@ -86,6 +94,18 @@ The **reference** in the report is the adjudicated primary label where one exist
 (every company that wasn't adjudicated had all main runs agreeing with YC). Opus is Claude, so Sonnet is likely
 flattered against this reference: read it as Claude's careful reading, not ground truth.
 
+The Luna runs count as main runs. If they didn't, a company where only Luna disagreed with YC would never be
+adjudicated, and Luna would be scored against YC there while Jev and Sonnet had their disagreements checked by
+Opus. Counting them added 41 disputed companies (242 in all), labelled with `adjudicate --add`, which keeps
+the 201 existing labels as they were. Opus agreed with YC on 40 of the 41; the one change (ANORIA, now
+Healthcare → Consumer Health and Wellness) lowers the reference accuracy of every Jev run and of `sonnet` by
+0.2 points (`sonnet_thinking`'s 100 companies don't include it).
+
+For Luna, the reference means this: where Luna disagrees with YC, Opus decides who is right. Luna is not
+Claude, so like Jev it gets none of the family advantage Sonnet may have; its accuracy against the reference
+measures agreement with Claude's careful reading, and a company where Luna and Opus see it one way and Claude's
+family another would count against Luna. Against YC alone, no Claude model is involved.
+
 ## Running it
 
 ```
@@ -94,15 +114,19 @@ uv run domains fetch                       # rebuild the sample with description
 uv run domains define                      # subindustry definitions, once -> data/domain_definitions.json
 uv run domains classify                    # all runs; --runs to pick, --limit N for a quick check
 uv run domains classify --runs jev_flat,jev_sequential,jev_fanout,jev_nouls --tag rerun
+uv run domains classify --runs luna_flat,luna_sequential,luna_fanout,luna_nouls   # needs OPENAI_API_KEY
+uv run domains classify --runs luna_flat,luna_sequential,luna_fanout,luna_nouls --tag rerun
 uv run domains classify --runs sonnet --retry-errors   # re-ask only rows that failed (overloaded, timeouts)
 uv run domains adjudicate --dry-run        # how many companies are disputed, and the Opus cost
 uv run domains adjudicate
+uv run domains adjudicate --add            # after adding a run: label only the newly disputed companies
 uv run report domains
 ```
 
 `fetch` prints an estimated cost for every run before you spend anything, and `adjudicate --dry-run` does the
 same for Opus. `define --force`, `classify` and `adjudicate --force` overwrite the committed files; to try your own
-definitions or a fresh sample (`fetch --new`), work on a branch.
+definitions or a fresh sample (`fetch --new`), work on a branch. `classify` without `--runs` reruns everything,
+Jev and Sonnet included.
 
 ## What the report shows
 
@@ -110,25 +134,28 @@ definitions or a fresh sample (`fetch --new`), work on a branch.
   level 2 (subindustry), with latency, cost and errors; then level 2 given that level 1 is right.
 - **Breakdown:** level-2 accuracy against the reference per domain, and per subindustry where the reference has
   at least 10 companies in it.
-- **Routing:** Jev flat answers, Sonnet takes the companies where Jev's top probability is under 0.6 or its
-  margin over the runner-up is under 0.2; a table of other thresholds, and the best rule for a given share of
-  companies sent to Sonnet. Then the routed companies, with Jev's top options next to Sonnet's pick and
-  rationale.
-- **Confusion:** the most frequent disagreements with the reference, and a domain confusion matrix.
-- **Shapes:** how often flat, sequential and fan-out agree with each other on the same company.
-- **Calibration:** Jev's accuracy per 0.1 bucket of its top probability, at both levels, and the expected
-  calibration error.
+Every section that reads the decision models' probabilities shows Luna next to Jev, as extra columns or rows.
+
+- **Routing:** Jev flat (or Luna flat) answers, Sonnet takes the companies where its top probability is under
+  0.6 or its margin over the runner-up is under 0.2; a table of other thresholds, and the best rule for a given
+  share of companies sent to Sonnet, for each decision model. Then Jev's routed companies, with Jev's top options
+  next to Sonnet's pick and rationale.
+- **Confusion:** Jev flat's most frequent disagreements with the reference, and a domain confusion matrix.
+- **Shapes:** how often flat, sequential and fan-out agree with each other on the same company, within each
+  decision model, and Jev against Luna on each shape.
+- **Calibration:** accuracy per 0.1 bucket of the top probability, at both levels, for Jev flat and Luna flat,
+  and the expected calibration error of every Choice run.
 - **Nouls:** how often the B2B Noul fires per YC domain; precision and recall of the five sector Nouls against
-  YC and against the reference (which adds Opus's secondary domain where there is one); mean per-company
-  Jaccard; and how many companies have two or more sector Nouls, or none.
-- **Duality:** a 2×2 of "two or more sector Nouls fire" against "the Choice is uncertain" (the routing rule).
-  Uncertain and dual is a company that is two things; uncertain with at most one Noul is model confusion. Both
-  off-diagonal groups are listed.
-- **Stability:** for each Jev run against its rerun, the share of identical outputs, the share of changed
-  labels, and the mean and maximum change in confidence.
+  YC and against the reference (which adds Opus's secondary domain where there is one), a row per decision model;
+  mean per-company Jaccard; and how many companies have two or more sector Nouls, or none.
+- **Duality:** a 2×2 of "two or more sector Nouls fire" against "the Choice is uncertain" (the routing rule),
+  each decision model's own Nouls against its own flat Choice. Uncertain and dual is a company that is two
+  things; uncertain with at most one Noul is model confusion. Jev's off-diagonal groups are listed.
+- **Stability:** for each Jev and Luna run against its rerun, the share of identical outputs, the share of
+  changed labels, and the mean and maximum change in confidence.
 - **Latency:** p50 and p95 per company as measured, with the number of requests in flight and calls per
   company, plus cost per 1,000 companies.
-- **Heatmap:** every company by the six Nouls, rows grouped by YC label, saved to
+- **Heatmap:** every company by Jev's six Nouls, rows grouped by YC label, saved to
   `data/figures/domains_nouls_heatmap_{light,dark}.png`.
 
 ## Assumptions and caveats
@@ -140,7 +167,16 @@ definitions or a fresh sample (`fetch --new`), work on a branch.
   a fire rate and keeps it out of precision, recall, Jaccard and duality, which use the five sector Nouls.
 - Many subindustries have fewer than 10 companies in the sample; per-subindustry numbers are shown only above
   that.
-- Latency is measured with many requests in flight (32 for Jev, 6 for Sonnet). A single request is faster;
-  the report states the concurrency next to each number.
+- Latency is measured with many requests in flight (32 for Jev and Luna, 6 for Sonnet). A single request is
+  faster; the report states the concurrency next to each number.
+- Luna's results were measured on the Decisions API's public beta, on 2026-10-09. The model, its limits and
+  its behaviour may change before general availability; rerun before quoting them as current.
+- Luna refuses some fan-out questions: the counterfactual "if this company were in Fintech, which Fintech
+  subindustry would fit it best?" for a company that plainly isn't. It did so for 34 companies, the same 34
+  in both passes, and never for the company's own domain. Pydantic AI needs every field answered, so those
+  rows are errors and `luna_fanout` is scored on 466 companies; the shape comparisons use only companies both
+  runs answered.
+- Luna returns every probability rounded to 0.01, and was fully deterministic here: the rerun matched the
+  first run exactly, probabilities included. Jev's reruns differ slightly.
 - The subindustry definitions were written by Sonnet and then reviewed. Editing them changes every run's input,
   so rerun after editing.

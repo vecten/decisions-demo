@@ -7,9 +7,12 @@ input, the model often reasons first (more output), and its confidence comes bac
 rather than a number you can put a threshold on.
 
 A decision model answers the same typed question differently: **unstructured state in, typed probabilities
-out, no text generated.** The demos in this repository use [Jev](https://typesafe.ai) from TypeSafe, which
-Pydantic AI exposes as `typesafe:jev-latest`. You give it the same Pydantic model you would give a language
-model, and it returns the parsed answer plus a probability for every option of every field.
+out, no text generated.** The demos in this repository use two: [Jev](https://typesafe.ai) from TypeSafe,
+which Pydantic AI exposes as `typesafe:jev-latest`, and OpenAI's `gpt-6-luna` through its
+[Decisions API](https://developers.openai.com/api/docs/guides/decisions) (public beta since 2026-10-06), which
+`core/luna.py` adds to Pydantic AI. You give either the same Pydantic model you would give a language model,
+and it returns the parsed answer plus a probability for every option of every field. Jev is in all three
+demos; Luna in demos 1 and 3 (demo 2's labels were written by an OpenAI model).
 
 ## Same question, two kinds of model
 
@@ -27,7 +30,8 @@ Three consequences follow:
   model is trained to return a probability directly.
 
 Jev's published price is $0.042 per million input tokens, with no output tokens billed
-([models page](https://docs.typesafe.ai/models)). The demos record the measured latency and cost of every call
+([models page](https://docs.typesafe.ai/models)). Luna's is $0.10 per million input tokens, with no output,
+cache-read or cache-write charges ([Decisions guide](https://developers.openai.com/api/docs/guides/decisions)). The demos record the measured latency and cost of every call
 next to the language model's, so the comparison here is from data, not from the price list.
 
 ## The pattern: System One filters, System Two reasons
@@ -56,7 +60,9 @@ on labelled examples and reports how many items the expensive model actually had
   directory", say so. Negations and boundaries have to be explicit, which is why the field docstrings in these
   demos are written as questions to be read literally.
 - **Limited state.** The input is capped: for `jev-1.13.0`, 32k tokens for the state plus the longest question
-  and 64k per request ([models page](https://docs.typesafe.ai/models)). The model cannot compact its own context.
+  and 64k per request ([models page](https://docs.typesafe.ai/models)). Luna's limits aren't documented yet; on
+  2026-10-09 it accepted about 700k input tokens and rejected 1.1M, with at most 200 questions per request and
+  255 options per choice (Jev's limit too). Neither model can compact its own context.
 
 ## Further reading
 
@@ -64,4 +70,5 @@ on labelled examples and reports how many items the expensive model actually had
   https://gist.github.com/samuelcolvin/fa2d9abf8349b18e360f2d326218ffa7
 - Pydantic AI's TypeSafe model (field mapping, confidence): https://pydantic.dev/docs/ai/models/typesafe/
 - TypeSafe SDK (Noul, Choice, Score): https://docs.typesafe.ai/sdk/python/usage
+- OpenAI's Decisions API (predicate, choice, score): https://developers.openai.com/api/docs/guides/decisions
 - Jev as a Pydantic Evals scorer: https://pydantic.dev/articles/jev-evals
