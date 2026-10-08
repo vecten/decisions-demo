@@ -1,9 +1,10 @@
-"""Three backends behind one interface.
+"""Every backend behind one interface.
 
 Each backend takes a state string and a Pydantic output type and returns the
 parsed output, a per-field confidence map (empty when the model has none),
-wall-clock latency and token usage. Pydantic AI handles Jev and Sonnet already;
-Luna is a stub until the Decisions API preview is visible.
+wall-clock latency and token usage. All of them run through Pydantic AI: Jev and
+Luna as decision models (Luna's wire format is core/luna.py), Claude and Luna's
+structured-output fallback as language models.
 """
 
 from __future__ import annotations
@@ -15,6 +16,9 @@ from typing import Any, Protocol, TypeVar
 import logfire
 from pydantic import BaseModel
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
+
+from .luna import LunaModel
 
 T = TypeVar('T', bound=BaseModel)
 
@@ -29,7 +33,8 @@ class Decision:
     output: BaseModel
     confidence: dict[str, float] = field(default_factory=dict)
     probabilities: dict[str, dict[str, float]] = field(default_factory=dict)
-    """Jev only: the full distribution over each field's options, which margins and calibration need."""
+    """Decision models only (Jev, Luna): the full distribution over each Choice's options, which margins and
+    calibration need."""
     rationale: str = ''
     """Claude with thinking off only: the text it writes before calling the output tool. Kept for the
     reports; the answer itself is only ever the tool call's arguments."""
@@ -70,9 +75,10 @@ def rationale(parts) -> str:
 
 
 class PydanticAIBackend:
-    """Anything Pydantic AI can address by model string: 'typesafe:jev-latest', 'anthropic:claude-sonnet-5-5', ..."""
+    """Anything Pydantic AI can address by model string ('typesafe:jev-latest', 'anthropic:claude-sonnet-5-5', ...)
+    or as a Model instance (LunaModel)."""
 
-    def __init__(self, name: str, model: str, model_settings: dict[str, Any] | None = None):
+    def __init__(self, name: str, model: str | Model, model_settings: dict[str, Any] | None = None):
         self.name = name
         self.model = model
         self.model_settings = model_settings or {}
@@ -96,7 +102,7 @@ class PydanticAIBackend:
         result = await agent.run(state)
         latency = (time.perf_counter() - t0) * 1000
         details = result.response.provider_details or {}
-        # Jev exposes per-field probabilities here; language models don't.
+        # Decision models (Jev, Luna) expose per-field probabilities here; language models don't.
         confidence = dict(details.get('confidence', {}))
         probabilities = dict(details.get('probabilities', {}))
         usage = result.usage
@@ -112,21 +118,6 @@ class PydanticAIBackend:
             cache_write_tokens=usage.cache_write_tokens or 0,
             backend=self.name,
         )
-
-
-class LunaDecisionsBackend:
-    """OpenAI Decisions API (limited preview since 2026-09-29).
-
-    Shape as announced: context (text or image) + question + finite answers -> one
-    answer + confidence. Plan: walk the Pydantic model's fields, ask one decision
-    per bool/Literal/IntEnum field, assemble the model, keep confidences.
-    Fill in once the preview docs are in hand; until then the runner skips it.
-    """
-
-    name = 'luna'
-
-    async def decide(self, state: str, output_type: type[T], instructions: str | None = None) -> Decision:
-        raise NotImplementedError('Decisions API adapter pending preview access; use luna_fallback')
 
 
 def claude_settings(thinking: bool) -> dict[str, Any]:
@@ -157,8 +148,9 @@ def make_backends(which: list[str], sonnet_thinking: bool = True) -> list[Backen
         # Slow, expensive reference judge for labels and adjudication. Always thinks, in every demo.
         # Opus 5.5 defaults to effort medium; pin high.
         'opus': PydanticAIBackend('opus', 'anthropic:claude-opus-5-5', {**claude_settings(True), 'anthropic_effort': 'high'}),
-        # Same schema through structured outputs. Its confidence is self-reported, not a calibrated probability.
+        # OpenAI's Decisions API (public beta), every question about a record in one call, as Jev.
+        'luna': PydanticAIBackend('luna', LunaModel('gpt-6-luna'), {'timeout': 30}),
+        # The same model through structured outputs: no probabilities, so what the decision endpoint adds.
         'luna_fallback': PydanticAIBackend('luna_fallback', 'openai:gpt-6-luna'),
-        'luna': LunaDecisionsBackend(),
     }
     return [registry[w] for w in which]
