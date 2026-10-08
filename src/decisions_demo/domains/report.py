@@ -9,9 +9,13 @@ Two references:
               Every company that wasn't adjudicated had all main runs agreeing with YC. Opus is Claude, so
               Sonnet is likely flattered against this reference; it is "Claude's reading", not ground truth.
 
-Sections: scoreboards, level 2 given level 1, per domain and per subindustry (n >= 10), routing Jev -> Sonnet,
-routed companies, confusion pairs and matrix, flat vs fan-out, calibration, Nouls, duality, stability,
-latency, and a Nouls heatmap saved as images.
+Two decision models, Jev and Luna (OpenAI's Decisions API), are asked the same four question shapes. Every
+section that reads their probabilities (routing, shapes, calibration, Nouls, duality, stability, latency)
+shows Luna next to Jev; the routed-companies list, the confusion tables and the heatmap stay Jev's.
+
+Sections: scoreboards, level 2 given level 1, per domain and per subindustry (n >= 10), routing Jev or
+Luna -> Sonnet, routed companies, confusion pairs and matrix, flat vs fan-out, calibration, Nouls, duality,
+stability, latency, and a Nouls heatmap saved as images.
 
 The B2B Noul is reported apart from the five sector Nouls (see B2B_NOTE): it asks whether a company sells to
 businesses, which is a different question from YC's B2B label, so it is shown as a fire rate and kept out of
@@ -31,11 +35,9 @@ from rich.table import Table
 from ..core.report import ROUTE, ROUTE_SETTINGS, console, cost, load, route_label, scoreboard, uncertain
 from ..core.runner import concurrency
 from .demo import DEMO, ADJUDICATED_PATH, SAMPLE_PATH
-from .runs import pick
+from .runs import CHOICE_RUNS, DECISION_MODELS, MAIN_RUNS, pick, shape
 from .schemas import OTHER, Schemas, build, field_name, load_definitions
 
-MAIN_RUNS = ('jev_flat', 'jev_sequential', 'jev_fanout', 'sonnet', 'sonnet_thinking')
-JEV_CHOICE_RUNS = ('jev_flat', 'jev_sequential', 'jev_fanout')
 FIGURES = Path('data/figures')
 SHORT = {'B2B': 'B2B', 'Consumer': 'Consumer', 'Fintech': 'Fintech', 'Healthcare': 'Health',
          'Industrials': 'Industrials', 'Real Estate and Construction': 'RE & Constr.', OTHER: 'Other'}
@@ -82,7 +84,7 @@ class Data:
         self.ok = {run: {i: r for i, r in rows.items() if 'error' not in r} for run, rows in results.items()}
         self.picks: dict[str, dict[str, Pair]] = {
             run: {i: pick(run, r['output'], self.s) for i, r in rows.items()}
-            for run, rows in self.ok.items() if not run.startswith('jev_nouls')
+            for run, rows in self.ok.items() if shape(run) != 'nouls'
         }
         self.yc: dict[str, Pair] = {i: (c['label'], c['sub_label']) for i, c in self.companies.items()}
         self.adjudicated = {i: r for i, r in load(ADJUDICATED_PATH).items() if 'error' not in r}
@@ -96,18 +98,22 @@ class Data:
     def runs(self, names=MAIN_RUNS) -> list[str]:
         return [n for n in names if n in self.picks]
 
-    def top(self, i: str, k: int = 3) -> list[tuple[str, float]]:
-        """Jev flat's top-k subindustries for a company."""
-        probs = self.ok['jev_flat'][i]['probabilities']['subindustry']
+    def models(self, shape_: str) -> list[str]:
+        """The decision models with a run of this shape, e.g. ['jev', 'luna'] for 'flat'."""
+        return [m for m in DECISION_MODELS if f'{m}_{shape_}' in self.ok]
+
+    def top(self, i: str, k: int = 3, model: str = 'jev') -> list[tuple[str, float]]:
+        """A decision model's flat run: its top-k subindustries for a company."""
+        probs = self.ok[f'{model}_flat'][i]['probabilities']['subindustry']
         return sorted(probs.items(), key=lambda x: -x[1])[:k]
 
-    def uncertain(self, i: str, min_top1: float = ROUTE[0], min_margin: float = ROUTE[1]) -> bool:
-        """The shared routing rule (core.report.ROUTE) on Jev flat's subindustry distribution."""
-        return uncertain(self.ok['jev_flat'][i]['probabilities']['subindustry'], min_top1, min_margin)
+    def uncertain(self, i: str, min_top1: float = ROUTE[0], min_margin: float = ROUTE[1], model: str = 'jev') -> bool:
+        """The shared routing rule (core.report.ROUTE) on a decision model's flat subindustry distribution."""
+        return uncertain(self.ok[f'{model}_flat'][i]['probabilities']['subindustry'], min_top1, min_margin)
 
-    def noul_p(self, i: str) -> dict[str, float]:
-        """P(yes) per domain. Jev reports a bool's confidence as its distance from 0.5, scaled to 0-1."""
-        r = self.ok['jev_nouls'][i]
+    def noul_p(self, i: str, model: str = 'jev') -> dict[str, float]:
+        """P(yes) per domain. Decision models report a bool's confidence as its distance from 0.5, scaled to 0-1."""
+        r = self.ok[f'{model}_nouls'][i]
         return {d: 0.5 + r['confidence'][field_name(d)] / 2 * (1 if r['output'][field_name(d)] else -1) for d in self.s.domains}
 
 
@@ -162,41 +168,52 @@ def breakdown(d: Data, min_n: int = 10) -> None:
 
 
 def routing(d: Data) -> None:
-    """Jev flat everywhere, Sonnet where Jev is unsure. Accuracy at level 2 against the reference."""
-    if 'jev_flat' not in d.picks or 'sonnet' not in d.picks:
+    """Jev flat (or Luna flat) everywhere, Sonnet where it is unsure. Accuracy at level 2 against the reference."""
+    models = d.models('flat')
+    if not models or 'sonnet' not in d.picks:
         return
-    ids = [i for i in d.picks['jev_flat'] if i in d.picks['sonnet']]
-    jev_cost = cost(list(d.ok['jev_flat'].values()), 'jev') / len(d.ok['jev_flat'])
     sonnet_cost = cost(list(d.ok['sonnet'].values()), 'sonnet') / len(d.ok['sonnet'])
+    ids = {m: [i for i in d.picks[f'{m}_flat'] if i in d.picks['sonnet']] for m in models}
+    unit_cost = {m: cost(list(d.ok[f'{m}_flat'].values()), m) / len(d.ok[f'{m}_flat']) for m in models}
 
-    def evaluate(t1: float, m: float) -> tuple[int, int, int]:
-        routed = [i for i in ids if d.uncertain(i, t1, m)]
-        r = set(routed)
-        l2 = sum((d.picks['sonnet'] if i in r else d.picks['jev_flat'])[i] == d.ref[i] for i in ids)
-        l1 = sum((d.picks['sonnet'] if i in r else d.picks['jev_flat'])[i][0] == d.ref[i][0] for i in ids)
-        return len(routed), l1, l2
+    def evaluate(m: str, t1: float, margin: float) -> tuple[int, int, int]:
+        routed = {i for i in ids[m] if d.uncertain(i, t1, margin, model=m)}
+        answer = lambda i: (d.picks['sonnet'] if i in routed else d.picks[f'{m}_flat'])[i]
+        return len(routed), sum(answer(i)[0] == d.ref[i][0] for i in ids[m]), sum(answer(i) == d.ref[i] for i in ids[m])
 
-    n = len(ids)
-    alone = {run: sum(d.picks[run][i] == d.ref[i] for i in ids) for run in ('jev_flat', 'sonnet')}
-    t = Table(title=f'routing: Jev flat answers, Sonnet takes the uncertain ones ({n} companies, level 2 vs reference)')
-    for col in ('route when', 'routed', 'combined L1', 'combined L2', 'USD per 1000 companies'):
-        t.add_column(col, justify='right')
-    for t1, m in ROUTE_SETTINGS:
-        k, l1, l2 = evaluate(t1, m)
-        t.add_row(route_label(t1, m), _pct(k, n), _pct(l1, n), _pct(l2, n),
-                  f'{1000 * (jev_cost + sonnet_cost * k / n):.2f}')
+    names = ' or '.join(f'{m.capitalize()} flat' for m in models)
+    t = Table(title=f'routing: {names} answers, Sonnet takes the uncertain ones ({", ".join(f"{m} {len(ids[m])}" for m in models)} companies, vs reference)')
+    t.add_column('route when', justify='right')
+    for m in models:
+        for col in ('routed', 'L1', 'L2', 'USD/1000'):
+            t.add_column(f'{m} {col}', justify='right')
+    for t1, margin in ROUTE_SETTINGS:
+        cells = []
+        for m in models:
+            k, l1, l2 = evaluate(m, t1, margin)
+            n = len(ids[m])
+            cells += [_pct(k, n), _pct(l1, n), _pct(l2, n), f'{1000 * (unit_cost[m] + sonnet_cost * k / n):.2f}']
+        t.add_row(route_label(t1, margin), *cells)
     console.print(t)
-    console.print(f'alone: jev_flat {alone["jev_flat"] / n:.0%}, sonnet {alone["sonnet"] / n:.0%} at level 2')
+    console.print('alone at level 2: ' + ', '.join(
+        f'{run} {sum(d.picks[run][i] == d.ref[i] for i in ids[m]) / len(ids[m]):.0%}'
+        for m in models for run in (f'{m}_flat', 'sonnet')))
 
     # Fit, as demo 1 fits its band: the best rule for a given share of companies sent to Sonnet.
     grid = [(a / 20, b / 20) for a in range(21) for b in range(11)]
-    scored = [(t1, m, *evaluate(t1, m)) for t1, m in grid]
+    scored = {m: [(t1, margin, *evaluate(m, t1, margin)) for t1, margin in grid] for m in models}
     t = Table(title='fit: best rule per routing budget (level 2 vs reference)')
-    for col in ('budget', 'top-1 <', 'margin <', 'routed', 'combined L2'):
-        t.add_column(col, justify='right')
+    t.add_column('budget', justify='right')
+    for m in models:
+        for col in ('top-1 <', 'margin <', 'routed', 'L2'):
+            t.add_column(f'{m} {col}', justify='right')
     for budget in (0.1, 0.2, 0.3, 0.5):
-        best = max((x for x in scored if x[2] <= budget * n), key=lambda x: (x[4], -x[2]))
-        t.add_row(f'<= {budget:.0%}', f'{best[0]:.2f}', f'{best[1]:.2f}', _pct(best[2], n), _pct(best[4], n))
+        cells = []
+        for m in models:
+            n = len(ids[m])
+            best = max((x for x in scored[m] if x[2] <= budget * n), key=lambda x: (x[4], -x[2]))
+            cells += [f'{best[0]:.2f}', f'{best[1]:.2f}', _pct(best[2], n), _pct(best[4], n)]
+        t.add_row(f'<= {budget:.0%}', *cells)
     console.print(t)
 
 
@@ -240,36 +257,41 @@ def confusion(d: Data, run: str = 'jev_flat', limit: int = 15) -> None:
 
 
 def shapes(d: Data) -> None:
-    """Do the Jev question shapes agree with each other on the same company?"""
-    runs = d.runs(JEV_CHOICE_RUNS)
-    t = Table(title='Jev question shapes against each other')
-    t.add_column('pair'); t.add_column('same domain', justify='right'); t.add_column('same subindustry', justify='right')
-    t.add_column('same sub, when same domain', justify='right')
-    for a, b in (('jev_flat', 'jev_fanout'), ('jev_flat', 'jev_sequential'), ('jev_sequential', 'jev_fanout')):
-        if a not in runs or b not in runs:
+    """Do the question shapes agree with each other on the same company? Within each decision model, then Jev
+    against Luna on the same shape."""
+    pairs = [(f'{m}_{a}', f'{m}_{b}') for m in DECISION_MODELS for a, b in (('flat', 'fanout'), ('flat', 'sequential'), ('sequential', 'fanout'))]
+    pairs += [(f'jev_{x}', f'luna_{x}') for x in ('flat', 'sequential', 'fanout')]
+    t = Table(title='question shapes against each other (on the companies both answered)')
+    t.add_column('pair'); t.add_column('n', justify='right'); t.add_column('same domain', justify='right')
+    t.add_column('same subindustry', justify='right'); t.add_column('same sub, when same domain', justify='right')
+    for a, b in pairs:
+        if a not in d.picks or b not in d.picks:
             continue
         ids = [i for i in d.picks[a] if i in d.picks[b]]
         same_dom = [i for i in ids if d.picks[a][i][0] == d.picks[b][i][0]]
-        t.add_row(f'{a} vs {b}', _pct(len(same_dom), len(ids)), _pct(sum(d.picks[a][i] == d.picks[b][i] for i in ids), len(ids)),
+        t.add_row(f'{a} vs {b}', str(len(ids)), _pct(len(same_dom), len(ids)), _pct(sum(d.picks[a][i] == d.picks[b][i] for i in ids), len(ids)),
                   _pct(sum(d.picks[a][i] == d.picks[b][i] for i in same_dom), len(same_dom)))
     console.print(t)
 
 
 def _confidences(d: Data, run: str) -> dict[str, tuple[list[float], list[bool]]]:
-    """Jev's probability for what it picked, at each level, and whether the pick was right (vs reference)."""
+    """A decision model's probability for what it picked, at each level, and whether the pick was right (vs reference).
+
+    Luna rounds every probability to 0.01, so a sum of them can pass 1 by a rounding step; it is capped there.
+    """
     out = {'L1': ([], []), 'L2': ([], [])}
     for i, r in d.ok[run].items():
         probs, p = r['probabilities'], d.picks[run][i]
-        if run.startswith('jev_flat'):
+        if shape(run) == 'flat':
             sub = probs['subindustry']
             p2 = sub[p[1] or OTHER]
             p1 = sub[OTHER] if p[0] == OTHER else sum(v for k, v in sub.items() if d.s.parent.get(k) == p[0])
         else:
             p1 = probs['domain'][p[0]]
-            sub_field = 'subindustry' if run.startswith('jev_sequential') else f'{field_name(p[0])}_subindustry'
+            sub_field = 'subindustry' if shape(run) == 'sequential' else f'{field_name(p[0])}_subindustry'
             p2 = p1 * probs[sub_field][p[1]] if p[1] else p1  # joint: P(domain) x P(sub | domain)
         for level, conf, right in (('L1', p1, p[0] == d.ref[i][0]), ('L2', p2, p == d.ref[i])):
-            out[level][0].append(conf)
+            out[level][0].append(min(conf, 1.0))
             out[level][1].append(right)
     return out
 
@@ -285,23 +307,25 @@ def _ece(confs: list[float], right: list[bool], bins: int = 10) -> float:
 
 
 def calibration(d: Data) -> None:
-    runs = d.runs(JEV_CHOICE_RUNS)
+    runs = [run for m in DECISION_MODELS for run in d.runs(CHOICE_RUNS[m])]
     if not runs:
         return
     cal = {run: _confidences(d, run) for run in runs}
-    t = Table(title="calibration of Jev's choice: accuracy per probability bucket (jev_flat, vs reference)")
-    for col in ('Jev probability', 'n L1', 'accuracy L1', 'n L2', 'accuracy L2'):
-        t.add_column(col, justify='right')
-    flat = cal.get('jev_flat')
-    if flat:
-        for b in range(10):
-            row = [f'{b / 10:.1f}-{(b + 1) / 10:.1f}']
+    flats = [f'{m}_flat' for m in d.models('flat')]
+    t = Table(title=f"calibration of the decision models' choice: accuracy per probability bucket ({', '.join(flats)}, vs reference)")
+    t.add_column('probability', justify='right')
+    for run in flats:
+        for col in ('n L1', 'acc L1', 'n L2', 'acc L2'):
+            t.add_column(f'{run.split("_")[0]} {col}', justify='right')
+    for b in range(10):
+        row = [f'{b / 10:.1f}-{(b + 1) / 10:.1f}']
+        for run in flats:
             for level in ('L1', 'L2'):
-                confs, right = flat[level]
+                confs, right = cal[run][level]
                 idx = [k for k, c in enumerate(confs) if b / 10 <= c < (b + 1) / 10 or (b == 9 and c == 1.0)]
                 row += [str(len(idx)), _pct(sum(right[k] for k in idx), len(idx))]
-            t.add_row(*row)
-        console.print(t)
+        t.add_row(*row)
+    console.print(t)
     t = Table(title='expected calibration error (lower is better; L2 for sequential and fan-out is P(domain) x P(sub))')
     t.add_column('run'); t.add_column('ECE L1', justify='right'); t.add_column('ECE L2', justify='right')
     for run in runs:
@@ -314,62 +338,77 @@ def sectors(d: Data) -> tuple[str, ...]:
 
 
 def nouls(d: Data) -> None:
-    if 'jev_nouls' not in d.ok:
+    models = d.models('nouls')
+    if not models:
         return
-    ids = list(d.ok['jev_nouls'])
-    noul = {i: d.noul_p(i) for i in ids}
+    ids = sorted(set.intersection(*(set(d.ok[f'{m}_nouls']) for m in models)))
+    noul = {m: {i: d.noul_p(i, m) for i in ids} for m in models}
     console.print(B2B_NOTE)
 
     t = Table(title='B2B Noul ("sells to businesses"): share of companies it fires for, by YC domain')
-    t.add_column('YC domain'); t.add_column('n', justify='right'); t.add_column('B2B Noul yes', justify='right')
+    t.add_column('YC domain'); t.add_column('n', justify='right')
+    for m in models:
+        t.add_column(f'{m} B2B yes', justify='right')
     for dom in (*d.s.domains, OTHER):
         group = [i for i in ids if d.yc[i][0] == dom]
-        t.add_row(dom, str(len(group)), _pct(sum(noul[i][B2B] > 0.5 for i in group), len(group)))
-    t.add_row('all', str(len(ids)), _pct(sum(noul[i][B2B] > 0.5 for i in ids), len(ids)))
+        t.add_row(dom, str(len(group)), *(_pct(sum(noul[m][i][B2B] > 0.5 for i in group), len(group)) for m in models))
+    t.add_row('all', str(len(ids)), *(_pct(sum(noul[m][i][B2B] > 0.5 for i in ids), len(ids)) for m in models))
     console.print(t)
 
     secs = set(sectors(d))
-    pred = {i: {dom for dom, p in noul[i].items() if p > 0.5} & secs for i in ids}
+    pred = {m: {i: {dom for dom, p in noul[m][i].items() if p > 0.5} & secs for i in ids} for m in models}
     sets = {
         'YC': {i: {d.yc[i][0]} & secs for i in ids},
         'reference': {i: ({d.ref[i][0]} | ({d.secondary[i][0]} if d.secondary.get(i) else set())) & secs for i in ids},
     }
     t = Table(title="sector Nouls: precision and recall per domain (reference set adds Opus's secondary domain where adjudicated)")
-    t.add_column('domain'); t.add_column('Jev yes', justify='right')
+    t.add_column('domain'); t.add_column('model'); t.add_column('yes', justify='right')
     for name in sets:
         t.add_column(f'n {name}', justify='right'); t.add_column(f'precision {name}', justify='right'); t.add_column(f'recall {name}', justify='right')
     for dom in sectors(d):
-        yes = [i for i in ids if dom in pred[i]]
-        row = [dom, str(len(yes))]
-        for truth in sets.values():
-            pos = [i for i in ids if dom in truth[i]]
-            row += [str(len(pos)), _pct(sum(dom in truth[i] for i in yes), len(yes)), _pct(sum(dom in pred[i] for i in pos), len(pos))]
-        t.add_row(*row)
+        for m in models:
+            yes = [i for i in ids if dom in pred[m][i]]
+            row = [dom if m == models[0] else '', m, str(len(yes))]
+            for truth in sets.values():
+                pos = [i for i in ids if dom in truth[i]]
+                row += [str(len(pos)), _pct(sum(dom in truth[i] for i in yes), len(yes)), _pct(sum(dom in pred[m][i] for i in pos), len(pos))]
+            t.add_row(*row, end_section=m == models[-1])
     console.print(t)
     jacc = lambda a, b: 1.0 if not a and not b else len(a & b) / len(a | b)
-    console.print('mean per-company Jaccard over the five sector Nouls (YC B2B and Other companies have an empty sector set): '
-                  + ', '.join(f'{name} {statistics.mean(jacc(pred[i], truth[i]) for i in ids):.2f}' for name, truth in sets.items())
-                  + f'; companies with 2+ sector Nouls yes: {sum(len(p) >= 2 for p in pred.values())}, with none: {sum(not p for p in pred.values())}')
+    for m in models:
+        console.print(f'{m}: mean per-company Jaccard over the five sector Nouls (YC B2B and Other companies have an empty sector set): '
+                      + ', '.join(f'{name} {statistics.mean(jacc(pred[m][i], truth[i]) for i in ids):.2f}' for name, truth in sets.items())
+                      + f'; companies with 2+ sector Nouls yes: {sum(len(p) >= 2 for p in pred[m].values())}, with none: {sum(not p for p in pred[m].values())}')
 
 
 def duality(d: Data, limit: int = 12) -> None:
-    """Is a split Choice a confused model, or a company that is two things? The Nouls tell them apart."""
-    if 'jev_nouls' not in d.ok or 'jev_flat' not in d.ok:
+    """Is a split Choice a confused model, or a company that is two things? The Nouls tell them apart.
+
+    Each decision model's own Nouls against its own flat Choice; the company lists below are Jev's.
+    """
+    models = [m for m in d.models('nouls') if m in d.models('flat')]
+    if 'jev' not in models:
         return
-    ids = [i for i in d.ok['jev_flat'] if i in d.ok['jev_nouls']]
     secs = sectors(d)
-    dual = {i: sum(d.noul_p(i)[dom] > 0.5 for dom in secs) >= 2 for i in ids}
-    unsure = {i: d.uncertain(i) for i in ids}
+    ids, dual, unsure = {}, {}, {}
+    for m in models:
+        ids[m] = [i for i in d.ok[f'{m}_flat'] if i in d.ok[f'{m}_nouls']]
+        dual[m] = {i: sum(d.noul_p(i, m)[dom] > 0.5 for dom in secs) >= 2 for i in ids[m]}
+        unsure[m] = {i: d.uncertain(i, model=m) for i in ids[m]}
     t = Table(title=f'duality: 2+ sector Nouls yes (B2B excluded) vs Choice uncertain (top-1 < {ROUTE[0]} or margin < {ROUTE[1]})')
-    t.add_column(''); t.add_column('Choice uncertain', justify='right'); t.add_column('Choice sure', justify='right')
+    t.add_column('')
+    for m in models:
+        t.add_column(f'{m}: Choice uncertain', justify='right'); t.add_column(f'{m}: Choice sure', justify='right')
     for label, flag in (('2+ sector Nouls yes (dual)', True), ('0-1 sector Nouls yes', False)):
-        t.add_row(label, *(str(sum(dual[i] == flag and unsure[i] == u for i in ids)) for u in (True, False)))
+        t.add_row(label, *(str(sum(dual[m][i] == flag and unsure[m][i] == u for i in ids[m])) for m in models for u in (True, False)))
     console.print(t)
-    console.print(f'flagged "this company is two things" (dual and uncertain): {sum(dual[i] and unsure[i] for i in ids)}')
+    console.print('flagged "this company is two things" (dual and uncertain): '
+                  + ', '.join(f'{m} {sum(dual[m][i] and unsure[m][i] for i in ids[m])}' for m in models))
+    ids, dual, unsure = ids['jev'], dual['jev'], unsure['jev']
     for title, sel in (('dual but the Choice is sure', lambda i: dual[i] and not unsure[i]),
                        ('Choice uncertain but only 0-1 sector Nouls: confusion, not two things', lambda i: unsure[i] and not dual[i])):
         rows = [i for i in ids if sel(i)]
-        t = Table(title=f'{title}: {len(rows)} companies (first {min(limit, len(rows))})')
+        t = Table(title=f'Jev, {title}: {len(rows)} companies (first {min(limit, len(rows))})')
         t.add_column('company', max_width=20); t.add_column('reference', max_width=24); t.add_column('sector Nouls yes', max_width=36)
         t.add_column("Jev's top 2", max_width=40)
         for i in rows[:limit]:
@@ -379,10 +418,10 @@ def duality(d: Data, limit: int = 12) -> None:
 
 
 def stability(d: Data) -> None:
-    t = Table(title='Jev stability: the same run twice')
+    t = Table(title='stability: the same run twice')
     for col in ('run', 'identical output', 'different label', 'mean |Δ confidence|', 'max |Δ confidence|'):
         t.add_column(col, justify='right' if col != 'run' else 'left')
-    for run in ('jev_flat', 'jev_sequential', 'jev_fanout', 'jev_nouls'):
+    for run in (f'{m}_{x}' for m in DECISION_MODELS for x in ('flat', 'sequential', 'fanout', 'nouls')):
         a, b = d.ok.get(run), d.ok.get(f'{run}_rerun')
         if not a or not b:
             continue
@@ -398,12 +437,12 @@ def latency(d: Data) -> None:
     t = Table(title='latency as measured: wall clock per company, with this many requests in flight')
     for col in ('run', 'in flight', 'calls per company', 'p50 ms', 'p95 ms', 'USD per 1000 companies'):
         t.add_column(col, justify='right' if col != 'run' else 'left')
-    for run in (*MAIN_RUNS, 'jev_nouls'):
+    for run in (*MAIN_RUNS, *(f'{m}_nouls' for m in DECISION_MODELS)):
         rows = list(d.ok.get(run, {}).values())
         if not rows:
             continue
         lat = sorted(r['latency_ms'] for r in rows)
-        calls = statistics.mean(2 if r['output'].get('subindustry') else 1 for r in rows) if run == 'jev_sequential' else 1
+        calls = statistics.mean(2 if r['output'].get('subindustry') else 1 for r in rows) if shape(run) == 'sequential' else 1
         t.add_row(run, str(concurrency(run)), f'{calls:.2f}', f'{statistics.median(lat):.0f}', f'{lat[int(len(lat) * 0.95) - 1]:.0f}',
                   f'{1000 * cost(rows, run) / len(rows):.2f}')
     console.print(t)

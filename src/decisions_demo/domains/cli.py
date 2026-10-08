@@ -5,8 +5,10 @@
   domains define         # Sonnet writes one line per sampled subindustry, once -> data/domain_definitions.json
   domains classify       # every run in domains/runs.py -> data/results/domains.<run>.jsonl
   domains classify --runs jev_flat,jev_sequential,jev_fanout,jev_nouls --tag rerun   # Jev stability run
+  domains classify --runs luna_flat,luna_sequential,luna_fanout,luna_nouls          # the same four shapes on Luna
   domains adjudicate --dry-run   # how many companies a run disputes with YC, and what Opus would cost
   domains adjudicate             # Opus labels those, blind -> data/domain_adjudicated.jsonl (hand-editable)
+  domains adjudicate --add       # after adding a run: label only the newly disputed, keep every existing label
 """
 
 from __future__ import annotations
@@ -93,7 +95,9 @@ def allocate_proportional[K](pool_sizes: dict[K, int], total: int, floor: int) -
 
 # Rough per-request figures for the cost preview; the real numbers come from each run's usage.
 # Calibrated on the 2026-10-04 runs: Claude counted ~27% more tokens than chars/4, Jev ~29% fewer.
-CHARS_PER_TOKEN = {'jev': 5.1}
+# Luna on the 2026-10-09 smoke test: ~0.8x Jev's count on the Choice shapes, ~1.3x on the Nouls, whose
+# instructions are repeated in every question.
+CHARS_PER_TOKEN = {'jev': 5.1, 'luna': 5.6}
 CLAUDE_CHARS_PER_TOKEN = 3.15
 TOOL_OVERHEAD_TOKENS = 400  # Anthropic's tool-use system prompt, sent with every structured-output call
 # Output tokens per call, measured on Sonnet 5.5 / Opus 5.5 (2026-10-04 smoke test): thinking off
@@ -114,7 +118,7 @@ def estimated_rows(backend: str, *models, records: list[dict], per_record=None, 
     out = []
     for i, r in enumerate(records):
         requests = [*models, *(per_record(r) if per_record else [])]
-        overhead = _tokens(INSTRUCTIONS, backend) + (TOOL_OVERHEAD_TOKENS if backend != 'jev' else 0)
+        overhead = _tokens(INSTRUCTIONS, backend) + (TOOL_OVERHEAD_TOKENS if backend not in domain_runs.DECISION_MODELS else 0)
         row = {'input_tokens': sum(_tokens(state(r), backend) + overhead + _schema_tokens(m, backend) for m in requests),
                'output_tokens': OUTPUT_TOKENS.get(backend, 0) * len(requests)}
         if cached:
@@ -137,16 +141,19 @@ def estimate_costs(sample: list[dict]) -> None:
     sonnet = 'sonnet_thinking' if DEMO.sonnet_thinking else 'sonnet'
     subset = sample[:domain_runs.SUBSET]
     runs = [
-        ('jev_flat', 'jev', rows('jev', s.flat)),
-        # The sub question only follows when the domain isn't Other; assume Jev's domain matches YC's.
-        ('jev_sequential', 'jev', rows('jev', s.domain, per_record=lambda r: [s.sub[r['label']]] if r['label'] in s.sub else [])),
-        ('jev_fanout', 'jev', rows('jev', s.fan_out)),
-        ('jev_nouls', 'jev', rows('jev', s.footprint)),
+        run for m in domain_runs.DECISION_MODELS for run in (
+            (f'{m}_flat', m, rows(m, s.flat)),
+            # The sub question only follows when the domain isn't Other; assume the domain picked matches YC's.
+            (f'{m}_sequential', m, rows(m, s.domain, per_record=lambda r: [s.sub[r['label']]] if r['label'] in s.sub else [])),
+            (f'{m}_fanout', m, rows(m, s.fan_out)),
+            (f'{m}_nouls', m, rows(m, s.footprint)),
+        )
+    ] + [
         (f'sonnet (thinking {"on" if DEMO.sonnet_thinking else "off"})', sonnet, rows(sonnet, s.nested, cached=not DEMO.sonnet_thinking)),
         (f'sonnet_thinking, first {len(subset)}', 'sonnet_thinking', rows('sonnet_thinking', s.nested, records=subset)),
         ('opus adjudication, if every company is disputed', 'opus', rows('opus', s.adjudication)),
     ]
-    typer.echo(f'estimated cost for {len(sample)} companies (prices from core/report.py PRICES; Jev reruns cost the same again):')
+    typer.echo(f'estimated cost for {len(sample)} companies (prices from core/report.py PRICES; Jev and Luna reruns cost the same again):')
     for name, backend, rs in runs:
         typer.echo(f'  {name:48} {sum(r["input_tokens"] for r in rs) / len(rs):6.0f} in-tokens/company   USD {cost(rs, backend):8.4f}')
 
@@ -362,10 +369,11 @@ ADJUDICATE_INSTRUCTIONS = (
 
 @app.command()
 def adjudicate(
-    runs: str = typer.Option('jev_flat,jev_sequential,jev_fanout,sonnet,sonnet_thinking',
+    runs: str = typer.Option(','.join(domain_runs.MAIN_RUNS),
                              help='a company is disputed when any of these runs disagrees with YC on domain + subindustry'),
     dry_run: bool = typer.Option(False, help='only count disputed companies and estimate the cost'),
     force: bool = typer.Option(False, help='re-label an existing file; rows marked "corrected" are kept as they are'),
+    add: bool = typer.Option(False, help='keep every existing label and only label disputed companies without one'),
 ):
     """Opus labels every disputed company, blind: it sees the company text, not YC's label or any run's pick."""
     require_companies()
@@ -381,13 +389,14 @@ def adjudicate(
 
     kept = {}
     if ADJUDICATED_PATH.exists():
-        if not (force or dry_run):
-            raise typer.BadParameter(f'{ADJUDICATED_PATH} exists and may be hand-edited; pass --force to re-label (corrected rows are kept)')
-        kept = {r['id']: r for r in read_jsonl(ADJUDICATED_PATH) if r.get('corrected')}
+        if not (force or dry_run or add):
+            raise typer.BadParameter(f'{ADJUDICATED_PATH} exists and may be hand-edited; pass --add to label only new disputes, '
+                                     'or --force to re-label (corrected rows are kept)')
+        kept = {r['id']: r for r in read_jsonl(ADJUDICATED_PATH) if r.get('corrected') or (add and 'error' not in r)}
     todo = [c for c in disputed if c['id'] not in kept]
     estimate = cost(estimated_rows('opus', s.adjudication, records=todo), 'opus')
     typer.echo(f'{len(disputed)} of {len(companies)} companies disputed by at least one of {runs}; '
-               f'{len(todo)} to label ({len(kept)} hand-corrected kept), estimated USD {estimate:.2f}')
+               f'{len(todo)} to label ({len(kept)} {"existing" if add else "hand-corrected"} kept), estimated USD {estimate:.2f}')
     if dry_run:
         return
 
