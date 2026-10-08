@@ -1,9 +1,9 @@
-"""Commands that work across acts: run-act and report.
+"""Commands that work across demos: run-demo and report.
 
-Each act lives in its own package and exposes ACT (what run-act needs) and
-report(results) (what report prints). Adding an act means adding it to ACTS.
+Each demo lives in its own package and exposes DEMO (what run-demo needs) and
+report(results) (what report prints). Adding a demo means adding it to DEMOS.
 
-  run-act --act guardrail --backends sonnet,jev
+  run-demo --demo guardrail --backends sonnet,jev
   report guardrail
 """
 
@@ -14,39 +14,39 @@ from pathlib import Path
 import typer
 
 from . import dealflow, domains, guardrail
-from .core.act import RESULTS_DIR
+from .core.demo import RESULTS_DIR
 from .core.backends import configure_logfire
 from .core.report import load_results
-from .core.runner import run_act
+from .core.runner import run_demo
 
-ACTS = {m.ACT.name: m for m in (guardrail, dealflow, domains)}
-
-
-def _act(name: str):
-    if name not in ACTS:
-        raise typer.BadParameter(f'unknown act {name!r}; one of: {", ".join(ACTS)}')
-    return ACTS[name]
+DEMOS = {m.DEMO.name: m for m in (guardrail, dealflow, domains)}
 
 
-run_act_app = typer.Typer(add_completion=False)
+def _demo(name: str):
+    if name not in DEMOS:
+        raise typer.BadParameter(f'unknown demo {name!r}; one of: {", ".join(DEMOS)}')
+    return DEMOS[name]
 
 
-@run_act_app.command()
+run_demo_app = typer.Typer(add_completion=False)
+
+
+@run_demo_app.command()
 def run(
-    act: str = typer.Option(..., help=' | '.join(ACTS)),
+    demo: str = typer.Option(..., help=' | '.join(DEMOS)),
     backends: str = typer.Option('sonnet', help='comma list: jev,sonnet,luna,luna_fallback,opus'),
     limit: int = typer.Option(0, help='run only the first N records (quick check)'),
 ):
-    """Batch one act through one or more backends, JSONL out per backend."""
-    spec = _act(act).ACT
+    """Batch one demo through one or more backends, JSONL out per backend."""
+    spec = _demo(demo).DEMO
     configure_logfire()
-    run_act(spec, backends.split(','), limit)
+    run_demo(spec, backends.split(','), limit)
 
 
 report_app = typer.Typer(add_completion=False)
 
 
 @report_app.command()
-def report(act: str = typer.Argument(...), results_dir: Path = typer.Option(RESULTS_DIR)):
-    """Scoreboard and act-specific tables. Reads only data/, never calls a model."""
-    _act(act).report(load_results(act, results_dir))
+def report(demo: str = typer.Argument(...), results_dir: Path = typer.Option(RESULTS_DIR)):
+    """Scoreboard and demo-specific tables. Reads only data/, never calls a model."""
+    _demo(demo).report(load_results(demo, results_dir))

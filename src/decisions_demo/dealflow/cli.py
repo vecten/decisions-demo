@@ -15,10 +15,10 @@ import typer
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from ..core.act import read_jsonl, write_jsonl
+from ..core.demo import read_jsonl, write_jsonl
 from ..core.backends import configure_logfire, make_backends
-from ..core.runner import run_act
-from .act import ACT, DEALS_PATH, GENERATION_PATH, NOTES_PATH, THESIS
+from ..core.runner import run_demo
+from .demo import DEMO, DEALS_PATH, GENERATION_PATH, NOTES_PATH, THESIS
 from .schemas import DealTriage, PartnerNote, Priority
 
 app = typer.Typer(add_completion=False)
@@ -153,15 +153,15 @@ def generate(n: int = 50, seed: int = 7):
 @app.command()
 def triage(backends: str = 'jev,sonnet'):
     configure_logfire()
-    run_act(ACT, backends.split(','))
+    run_demo(DEMO, backends.split(','))
 
 
 @app.command()
 def notes(source: str = 'jev', min_priority: int = int(Priority.this_week)):
     """System Two only where System One said it's worth it."""
     configure_logfire()
-    deals = {r['id']: r for r in ACT.records()}
-    triaged = read_jsonl(ACT.results_path(source))
+    deals = {r['id']: r for r in DEMO.records()}
+    triaged = read_jsonl(DEMO.results_path(source))
     chosen = [t for t in triaged if 'error' not in t and int(t['output']['priority']) >= min_priority]
     # Writing, not classifying: the note writer thinks, whatever the triage baseline does.
     writer = make_backends(['sonnet_thinking'])[0]

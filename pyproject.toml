@@ -16,7 +16,7 @@ dependencies = [
 [project.scripts]
 mine-sessions = "decisions_demo.guardrail.mine_sessions:app"
 label = "decisions_demo.guardrail.label:app"
-run-act = "decisions_demo.cli:run_act_app"
+run-demo = "decisions_demo.cli:run_demo_app"
 report = "decisions_demo.cli:report_app"
 dealflow = "decisions_demo.dealflow.cli:app"
 domains = "decisions_demo.domains.cli:app"

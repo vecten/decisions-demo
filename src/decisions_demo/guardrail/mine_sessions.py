@@ -16,8 +16,8 @@ from pathlib import Path
 
 import typer
 
-from ..core.act import write_jsonl
-from .act import COMMANDS_PATH
+from ..core.demo import write_jsonl
+from .demo import COMMANDS_PATH
 
 app = typer.Typer(add_completion=False)
 

@@ -27,7 +27,7 @@ from typing import Annotated, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema, create_model
 from pydantic_ai import BoolCriteria
 
-from .act import DEFINITIONS_PATH
+from .demo import DEFINITIONS_PATH
 
 OTHER = 'Other'
 

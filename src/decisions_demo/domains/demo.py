@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..core.act import Act
+from ..core.demo import Demo
 
 # The sample as published: ids, names, YC's labels and a hash of each description, no YC text. Committed;
 # `domains fetch` rebuilds COMPANIES_PATH from it, and the report reads it directly.
@@ -24,7 +24,7 @@ def state(rec: dict) -> str:
     return f"Company: {rec['name']}\nOne-liner: {rec['one_liner']}\n\n{rec['long_description']}"
 
 
-ACT = Act(
+DEMO = Demo(
     name='domains',
     data=COMPANIES_PATH,
     state=state,

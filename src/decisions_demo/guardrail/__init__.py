@@ -2,11 +2,11 @@
 
   mine-sessions                              # ~/.claude/projects -> data/commands.jsonl
   label                                      # Opus reference labels -> data/labels.jsonl
-  run-act --act guardrail --backends sonnet,jev
+  run-demo --demo guardrail --backends sonnet,jev
   report guardrail
 """
 
-from .act import ACT
+from .demo import DEMO
 from .report import report
 
-__all__ = ['ACT', 'report']
+__all__ = ['DEMO', 'report']

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..core.act import Act
+from ..core.demo import Demo
 from .schemas import DealTriage
 
 THESIS = """Fund thesis: seed and Series A, B2B software only (fintech infrastructure, devtools,
@@ -11,7 +11,7 @@ We take warm intros from portfolio founders seriously."""
 
 DEALS_PATH = Path('data/deals.jsonl')
 
-ACT = Act(
+DEMO = Demo(
     name='dealflow',
     schema=DealTriage,
     data=DEALS_PATH,
@@ -24,5 +24,5 @@ ACT = Act(
 )
 
 # System Two output and the generator's usage. They live next to the triage results, so the report skips them.
-NOTES_PATH = ACT.results_path('notes')
-GENERATION_PATH = ACT.results_path('generation')
+NOTES_PATH = DEMO.results_path('notes')
+GENERATION_PATH = DEMO.results_path('generation')

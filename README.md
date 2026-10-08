@@ -63,8 +63,8 @@ probability for every option. Claude gets the same model as structured output.
 | `opus` | `anthropic:claude-opus-5-5` | always on, effort high; used for reference labels and adjudication |
 | `luna_fallback` | `openai:gpt-6-luna` | optional comparison in demo 1, through structured outputs |
 
-Backends live in `src/decisions_demo/core/backends.py`. Each demo is an `Act` in the code
-(`src/decisions_demo/<demo>/act.py`): a dataset, the text each backend sees per record, and settings such as
+Backends live in `src/decisions_demo/core/backends.py`. Each demo is a `Demo` in the code
+(`src/decisions_demo/<demo>/demo.py`): a dataset, the text each backend sees per record, and settings such as
 `sonnet_thinking`, which decides what `sonnet` means in that demo.
 
 | Demo | `sonnet` (main run) | Comparison run |
@@ -111,7 +111,7 @@ jev_vs_sonnet.py           one command, two models, timed
 docs/                      background and one document per demo
 data/                      inputs, reference labels, results and figures (see Data below)
 src/decisions_demo/
-  cli.py                   run-act and report, across demos
+  cli.py                   run-demo and report, across demos
   core/                    backends, batch runner, scoreboard and cost
   guardrail/               demo 1: mine-sessions, label, report
   dealflow/                demo 2: generate, triage, notes, report

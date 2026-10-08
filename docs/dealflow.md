@@ -65,7 +65,7 @@ direction is urgent.
 | `sonnet` | `claude-sonnet-5-5` | off | triages every email, for comparison |
 | `notes` | `claude-sonnet-5-5` | on | writes a partner note only where Jev's priority is "this week" or "today" |
 
-Sonnet triages with thinking off (`sonnet_thinking=False` in `dealflow/act.py`), the same baseline as demo 3: it
+Sonnet triages with thinking off (`sonnet_thinking=False` in `dealflow/demo.py`), the same baseline as demo 3: it
 gets the schema as a tool, exactly as Jev does. The partner notes are writing rather than classification, so
 `dealflow notes` uses `sonnet_thinking` regardless. See
 [How thinking changes the request](../README.md#how-thinking-changes-the-request) for what thinking changes.

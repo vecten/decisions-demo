@@ -4,7 +4,7 @@
   report dealflow
 """
 
-from .act import ACT
+from .demo import DEMO
 from .report import report
 
-__all__ = ['ACT', 'report']
+__all__ = ['DEMO', 'report']

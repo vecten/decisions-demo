@@ -1,4 +1,4 @@
-"""Scoreboard and cost: the part of every act's report that is the same. Reads only data/, never calls a model."""
+"""Scoreboard and cost: the part of every demo's report that is the same. Reads only data/, never calls a model."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
-from .act import Act
+from .demo import Demo
 
 console = Console()
 
@@ -30,9 +30,9 @@ def load(path: Path) -> dict[str, dict]:
     return {r['id']: r for r in (json.loads(l) for l in path.read_text().splitlines() if l.strip())}
 
 
-def load_results(act: str, results_dir: Path) -> dict[str, dict[str, dict]]:
-    """Every <act>.<name>.jsonl in results_dir, keyed by <name> (usually a backend)."""
-    return {p.stem.split('.')[1]: load(p) for p in sorted(results_dir.glob(f'{act}.*.jsonl'))}
+def load_results(demo: str, results_dir: Path) -> dict[str, dict[str, dict]]:
+    """Every <demo>.<name>.jsonl in results_dir, keyed by <name> (usually a backend)."""
+    return {p.stem.split('.')[1]: load(p) for p in sorted(results_dir.glob(f'{demo}.*.jsonl'))}
 
 
 # Prompt caching, relative to the input price: Anthropic's 5-minute cache writes, and cache reads by family.
@@ -75,11 +75,11 @@ def route_label(min_top1: float, min_margin: float) -> str:
     return label + (' (default)' if (min_top1, min_margin) == ROUTE else '')
 
 
-def scoreboard(act: Act, results: dict[str, dict[str, dict]], labels: dict[str, dict], title: str | None = None,
+def scoreboard(demo: Demo, results: dict[str, dict[str, dict]], labels: dict[str, dict], title: str | None = None,
                agree: str = 'agree') -> None:
     """One row per run. `agree` names what the agreement columns compare against."""
-    fields = act.compare_fields
-    t = Table(title=title or f'{act.name}: {len(labels)} items')
+    fields = demo.compare_fields
+    t = Table(title=title or f'{demo.name}: {len(labels)} items')
     t.add_column('backend')
     for f in fields:
         t.add_column(f'{f} {agree}')

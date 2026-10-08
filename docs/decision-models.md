@@ -26,9 +26,9 @@ Three consequences follow:
 - **No thinking tokens.** A language model gets more reliable by reasoning first, which costs output. A decision
   model is trained to return a probability directly.
 
-Jev's published price is $0.042 per million input tokens, with no output tokens billed. The demos record the
-measured latency and cost of every call next to the language model's, so the comparison here is from data,
-not from the price list.
+Jev's published price is $0.042 per million input tokens, with no output tokens billed
+([models page](https://docs.typesafe.ai/models)). The demos record the measured latency and cost of every call
+next to the language model's, so the comparison here is from data, not from the price list.
 
 ## The pattern: System One filters, System Two reasons
 
@@ -48,14 +48,15 @@ on labelled examples and reports how many items the expensive model actually had
 - **No text.** A decision model cannot summarise, explain or fill a free-text field. Anything that needs words
   goes to a language model.
 - **No why.** You get a number, not the part of the input that drove it.
-- **Bias.** Simon Willison's test of asking it to rank towns as "good cities" ranked them by income
-  ([post](https://simonw.substack.com/p/jev-introduces-a-new-shape-of-llm)). Keep it away from decisions about
-  people.
+- **Bias.** Simon Willison had it score every Bay Area city on the yes/no question "Good city?"; it put
+  Cupertino top and East Palo Alto bottom
+  ([post](https://simonw.substack.com/p/jev-introduces-a-new-shape-of-llm)). A vague question gets answered
+  with whatever prior the model has. Keep it away from decisions about people.
 - **Literal reading.** It answers the question as written. If you mean `$HOME` counts as "outside the
   directory", say so. Negations and boundaries have to be explicit, which is why the field docstrings in these
   demos are written as questions to be read literally.
-- **Limited state.** The input is capped (32k tokens at the time of writing) and the model cannot compact its
-  own context.
+- **Limited state.** The input is capped: for `jev-1.13.0`, 32k tokens for the state plus the longest question
+  and 64k per request ([models page](https://docs.typesafe.ai/models)). The model cannot compact its own context.
 
 ## Further reading
 

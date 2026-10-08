@@ -7,7 +7,7 @@ import statistics
 from rich.table import Table
 
 from ..core.report import ROUTE, ROUTE_SETTINGS, console, cost, load, route_label, scoreboard, uncertain
-from .act import ACT, DEALS_PATH
+from .demo import DEMO, DEALS_PATH
 from .schemas import Priority
 
 PROVIDERS = {'openai': 'OpenAI', 'anthropic': 'Anthropic'}
@@ -123,7 +123,7 @@ def report(results: dict[str, dict[str, dict]]) -> None:
     generator = next((d['generator']['requested'] for d in deals.values() if d.get('generator')), '')
     provider = PROVIDERS.get(generator.split(':')[0], generator or 'generator')
     agree = f'vs {provider}-generated labels'
-    scoreboard(ACT, results, labels, title=f'dealflow: {len(deals)} emails, labels written by {generator or "the generator"}',
+    scoreboard(DEMO, results, labels, title=f'dealflow: {len(deals)} emails, labels written by {generator or "the generator"}',
                agree=agree)
     console.print(SMALL_SAMPLE.format(n=len(deals), pct=100 / max(len(deals), 1)))
     if 'jev' in results and 'sonnet' in results:

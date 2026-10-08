@@ -1,4 +1,4 @@
-"""Batch runner: one act, one or more backends, JSONL out per backend.
+"""Batch runner: one demo, one or more backends, JSONL out per backend.
 
 Runs are precomputed and reports only read the files. Concurrency is bounded per backend because
 Jev is happy with 50 in flight and Sonnet is not.
@@ -12,7 +12,7 @@ from pathlib import Path
 import logfire
 import typer
 
-from .act import Act, write_jsonl
+from .demo import Demo, write_jsonl
 from .backends import Backend, make_backends
 
 CONCURRENCY = {'jev': 32, 'luna': 32, 'luna_fallback': 8, 'sonnet': 6, 'opus': 3}
@@ -23,13 +23,13 @@ def concurrency(backend: str) -> int:
     return CONCURRENCY.get(backend) or CONCURRENCY.get(backend.split('_')[0], 4)
 
 
-async def run_backend(backend: Backend, act: Act, records: list[dict], out: Path) -> None:
+async def run_backend(backend: Backend, demo: Demo, records: list[dict], out: Path) -> None:
     sem = asyncio.Semaphore(concurrency(backend.name))
 
     async def one(rec: dict) -> dict:
         async with sem:
             try:
-                d = await backend.decide(act.state(rec), act.schema, act.instructions)
+                d = await backend.decide(demo.state(rec), demo.schema, demo.instructions)
                 return {'id': rec['id'], **d.to_record()}
             except NotImplementedError as e:
                 return {'id': rec['id'], 'backend': backend.name, 'error': str(e)}
@@ -45,14 +45,14 @@ async def run_backend(backend: Backend, act: Act, records: list[dict], out: Path
     typer.echo(f'{backend.name}: {ok}/{len(results)} ok -> {out}')
 
 
-def run_act(act: Act, backends: list[str], limit: int = 0) -> None:
-    """Run every backend over the act's records, one after another, each into data/results/<act>.<backend>.jsonl."""
-    if act.schema is None:
-        raise typer.BadParameter(f'act {act.name!r} asks several questions; use its own command (e.g. `domains classify`)')
-    records = act.records(limit)
+def run_demo(demo: Demo, backends: list[str], limit: int = 0) -> None:
+    """Run every backend over the demo's records, one after another, each into data/results/<demo>.<backend>.jsonl."""
+    if demo.schema is None:
+        raise typer.BadParameter(f'demo {demo.name!r} asks several questions; use its own command (e.g. `domains classify`)')
+    records = demo.records(limit)
 
     async def go():
-        for b in make_backends(backends, act.sonnet_thinking):
-            await run_backend(b, act, records, act.results_path(b.name))
+        for b in make_backends(backends, demo.sonnet_thinking):
+            await run_backend(b, demo, records, demo.results_path(b.name))
 
     asyncio.run(go())

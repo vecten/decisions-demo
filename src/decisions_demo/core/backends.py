@@ -148,13 +148,13 @@ def claude_settings(thinking: bool) -> dict[str, Any]:
 
 
 def make_backends(which: list[str], sonnet_thinking: bool = True) -> list[Backend]:
-    """`sonnet` follows the act's setting (Act.sonnet_thinking); the two explicit Sonnet names never change."""
+    """`sonnet` follows the demo's setting (Demo.sonnet_thinking); the two explicit Sonnet names never change."""
     registry: dict[str, Backend] = {
         'jev': PydanticAIBackend('jev', 'typesafe:jev-latest', {'timeout': 10}),
         'sonnet': PydanticAIBackend('sonnet', 'anthropic:claude-sonnet-5-5', claude_settings(sonnet_thinking)),
         'sonnet_thinking': PydanticAIBackend('sonnet_thinking', 'anthropic:claude-sonnet-5-5', claude_settings(True)),
         'sonnet_no_thinking': PydanticAIBackend('sonnet_no_thinking', 'anthropic:claude-sonnet-5-5', claude_settings(False)),
-        # Slow, expensive reference judge for labels and adjudication. Always thinks, in every act.
+        # Slow, expensive reference judge for labels and adjudication. Always thinks, in every demo.
         # Opus 5.5 defaults to effort medium; pin high.
         'opus': PydanticAIBackend('opus', 'anthropic:claude-opus-5-5', {**claude_settings(True), 'anthropic_effort': 'high'}),
         # Same schema through structured outputs. Its confidence is self-reported, not a calibrated probability.

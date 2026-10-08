@@ -68,7 +68,7 @@ adds a `type` to each option, which Claude's strict mode requires.
 | `sonnet_thinking` | `claude-sonnet-5-5` | on | the first 100 (the sample is shuffled) |
 | adjudication | `claude-opus-5-5` | on, effort high | every disputed company |
 
-Sonnet runs with thinking off here (`sonnet_thinking=False` in `domains/act.py`) so it receives the schema
+Sonnet runs with thinking off here (`sonnet_thinking=False` in `domains/demo.py`) so it receives the schema
 exactly as Jev does, as a tool listing the same options and definitions, and so that the long schema is
 prompt-cached across 500 calls. `sonnet_thinking` measures what thinking adds on a subset. See
 [How thinking changes the request](../README.md#how-thinking-changes-the-request) for the mechanics, including

@@ -1,4 +1,4 @@
-"""Act 3 report: two-level domain classification against YC's labels and the adjudicated reference.
+"""Demo 3 report: two-level domain classification against YC's labels and the adjudicated reference.
 
 Reads data/companies.jsonl, data/results/domains.*.jsonl and data/domain_adjudicated.jsonl; never calls a model.
 
@@ -29,7 +29,7 @@ from rich.table import Table
 
 from ..core.report import ROUTE, ROUTE_SETTINGS, console, cost, load, route_label, scoreboard, uncertain
 from ..core.runner import concurrency
-from .act import ACT, ADJUDICATED_PATH, SAMPLE_PATH
+from .demo import DEMO, ADJUDICATED_PATH, SAMPLE_PATH
 from .runs import pick
 from .schemas import OTHER, Schemas, build, field_name, load_definitions
 
@@ -111,15 +111,15 @@ class Data:
 
 
 def scoreboards(d: Data) -> None:
-    act = replace(ACT, compare_fields=('domain', 'subindustry'))
+    demo = replace(DEMO, compare_fields=('domain', 'subindustry'))
     norm = {run: {i: {**d.ok[run][i], 'output': {'domain': p[0], 'subindustry': p[1]}} for i, p in d.picks[run].items()}
             for run in d.runs()}
     for run in norm:  # failed rows still count as errors on the board
         norm[run].update({i: r for i, r in d.results[run].items() if 'error' in r})
     as_labels = lambda ref: {i: {'label': {'domain': p[0], 'subindustry': p[1]}} for i, p in ref.items()}
     n = len(d.companies)
-    scoreboard(act, norm, as_labels(d.yc), title=f'domains: agreement with YC, {n} companies (sonnet_thinking: first 100)')
-    scoreboard(act, norm, as_labels(d.ref), title=f'domains: accuracy against the reference, YC corrected by Opus on {len(d.adjudicated)} disputed')
+    scoreboard(demo, norm, as_labels(d.yc), title=f'domains: agreement with YC, {n} companies (sonnet_thinking: first 100)')
+    scoreboard(demo, norm, as_labels(d.ref), title=f'domains: accuracy against the reference, YC corrected by Opus on {len(d.adjudicated)} disputed')
 
     t = Table(title='level 2 given level 1: subindustry right when the domain is right')
     t.add_column('run')
@@ -187,7 +187,7 @@ def routing(d: Data) -> None:
     console.print(t)
     console.print(f'alone: jev_flat {alone["jev_flat"] / n:.0%}, sonnet {alone["sonnet"] / n:.0%} at level 2')
 
-    # Fit, as act 1 fits its band: the best rule for a given share of companies sent to Sonnet.
+    # Fit, as demo 1 fits its band: the best rule for a given share of companies sent to Sonnet.
     grid = [(a / 20, b / 20) for a in range(21) for b in range(11)]
     scored = [(t1, m, *evaluate(t1, m)) for t1, m in grid]
     t = Table(title='fit: best rule per routing budget (level 2 vs reference)')

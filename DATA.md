@@ -25,7 +25,7 @@ Model rationales and explanations describe the companies in the models' own word
 | File | How to get it |
 |---|---|
 | `data/companies.jsonl` | `uv run domains fetch` rebuilds the published sample, with descriptions, from the YC mirror. It lists any company whose description YC has edited since the sample was drawn (the hash no longer matches), and any that left the directory. Model runs need this file; the report doesn't. |
-| `data/commands.jsonl`, `data/labels.jsonl`, `data/results/guardrail.*` | Demo 1 mines your own Claude Code sessions: `uv run mine-sessions`, `uv run label`, then `run-act`. Personal, so never committed. |
+| `data/commands.jsonl`, `data/labels.jsonl`, `data/results/guardrail.*` | Demo 1 mines your own Claude Code sessions: `uv run mine-sessions`, `uv run label`, then `run-demo`. Personal, so never committed. |
 
 ## Credits
 

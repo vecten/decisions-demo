@@ -1,10 +1,10 @@
-"""The runs act 3 makes, each a backend asking one question shape of the sample.
+"""The runs demo 3 makes, each a backend asking one question shape of the sample.
 
   jev_flat          one Choice over every subindustry; the domain is the subindustry's parent
   jev_sequential    domain Choice, then the sub Choice of the winning domain: two Jev calls
   jev_fanout        domain Choice plus all six sub Choices in one call; sub read from the winner
   jev_nouls         one Noul per domain, the multi-label footprint
-  sonnet            nested domain -> subindustry, thinking off (ACT.sonnet_thinking)
+  sonnet            nested domain -> subindustry, thinking off (DEMO.sonnet_thinking)
   sonnet_thinking   the same with thinking on, on the first SUBSET companies (the sample is shuffled)
 
 Each writes data/results/domains.<run>.jsonl. A tag (`--tag rerun`) writes domains.<run>_<tag>.jsonl,
@@ -17,10 +17,10 @@ from dataclasses import dataclass, field, replace
 
 from pydantic import BaseModel
 
-from ..core.act import RESULTS_DIR, Act, read_jsonl, write_jsonl
+from ..core.demo import RESULTS_DIR, Demo, read_jsonl, write_jsonl
 from ..core.backends import Backend, Decision, make_backends
 from ..core.runner import run_backend
-from .act import ACT
+from .demo import DEMO
 from .schemas import OTHER, Schemas, field_name
 
 RUNS = ('jev_flat', 'jev_sequential', 'jev_fanout', 'jev_nouls', 'sonnet', 'sonnet_thinking')
@@ -78,15 +78,15 @@ def pick(run: str, output: dict, schemas: Schemas) -> tuple[str, str | None]:
     return output['domain'], output['subindustry']
 
 
-def plan(schemas: Schemas, records: list[dict]) -> dict[str, tuple[Backend, Act, list[dict]]]:
-    jev, sonnet, sonnet_thinking = make_backends(['jev', 'sonnet', 'sonnet_thinking'], ACT.sonnet_thinking)
+def plan(schemas: Schemas, records: list[dict]) -> dict[str, tuple[Backend, Demo, list[dict]]]:
+    jev, sonnet, sonnet_thinking = make_backends(['jev', 'sonnet', 'sonnet_thinking'], DEMO.sonnet_thinking)
     return {
-        'jev_flat': (jev, replace(ACT, schema=schemas.flat), records),
-        'jev_sequential': (Sequential(jev, schemas), ACT, records),
-        'jev_fanout': (jev, replace(ACT, schema=schemas.fan_out), records),
-        'jev_nouls': (jev, replace(ACT, schema=schemas.footprint), records),
-        'sonnet': (sonnet, replace(ACT, schema=schemas.nested), records),
-        'sonnet_thinking': (sonnet_thinking, replace(ACT, schema=schemas.nested), records[:SUBSET]),
+        'jev_flat': (jev, replace(DEMO, schema=schemas.flat), records),
+        'jev_sequential': (Sequential(jev, schemas), DEMO, records),
+        'jev_fanout': (jev, replace(DEMO, schema=schemas.fan_out), records),
+        'jev_nouls': (jev, replace(DEMO, schema=schemas.footprint), records),
+        'sonnet': (sonnet, replace(DEMO, schema=schemas.nested), records),
+        'sonnet_thinking': (sonnet_thinking, replace(DEMO, schema=schemas.nested), records[:SUBSET]),
     }
 
 
@@ -94,17 +94,17 @@ async def run(names: list[str], schemas: Schemas, records: list[dict], tag: str 
     """With retry_errors, only the rows that failed last time are asked again and merged into the file."""
     runs = plan(schemas, records)
     for name in names:
-        backend, act, recs = runs[name]
-        out = RESULTS_DIR / f'{ACT.name}.{name}{"_" + tag if tag else ""}.jsonl'
+        backend, demo, recs = runs[name]
+        out = RESULTS_DIR / f'{DEMO.name}.{name}{"_" + tag if tag else ""}.jsonl'
         if not retry_errors:
-            await run_backend(backend, act, recs, out)
+            await run_backend(backend, demo, recs, out)
             continue
         previous = read_jsonl(out)
         failed = {r['id'] for r in previous if 'error' in r}
         if not failed:
             continue
         retry = out.with_suffix('.retry.jsonl')
-        await run_backend(backend, act, [r for r in recs if r['id'] in failed], retry)
+        await run_backend(backend, demo, [r for r in recs if r['id'] in failed], retry)
         fresh = {r['id']: r for r in read_jsonl(retry)}
         write_jsonl(out, [fresh.get(r['id'], r) for r in previous])
         retry.unlink()

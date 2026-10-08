@@ -5,7 +5,7 @@ from __future__ import annotations
 from rich.table import Table
 
 from ..core.report import console, load, scoreboard
-from .act import ACT, COMMANDS_PATH, LABELS_PATH
+from .demo import DEMO, COMMANDS_PATH, LABELS_PATH
 
 
 def disagreements(results: dict[str, dict[str, dict]], labels: dict[str, dict], commands: dict[str, dict], field: str = 'action', a: str = 'jev', b: str = 'sonnet') -> None:
@@ -66,8 +66,13 @@ def routing_fit(results: dict[str, dict[str, dict]], labels: dict[str, dict], ba
 
 
 def report(results: dict[str, dict[str, dict]]) -> None:
+    # Demo 1's data comes from your own sessions and is never committed, so a fresh clone has none.
+    if not results or not LABELS_PATH.exists():
+        console.print('No guardrail data yet. It is mined from your own Claude Code sessions, never committed: '
+                      'run `mine-sessions`, then `label`, then `run-demo --demo guardrail --backends jev,sonnet`.')
+        return
     labels = load(LABELS_PATH)
     commands = load(COMMANDS_PATH)
-    scoreboard(ACT, results, labels)
+    scoreboard(DEMO, results, labels)
     disagreements(results, labels, commands)
     routing_fit(results, labels)

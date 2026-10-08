@@ -22,12 +22,12 @@ import typer
 from pydantic import BaseModel
 from pydantic_ai.tools import GenerateToolJsonSchema
 
-from ..core.act import RESULTS_DIR, read_jsonl, write_jsonl
+from ..core.demo import RESULTS_DIR, read_jsonl, write_jsonl
 from ..core.backends import configure_logfire, make_backends
 from ..core.report import cost
 from ..core.runner import concurrency
 from . import runs as domain_runs
-from .act import ACT, ADJUDICATED_PATH, COMPANIES_PATH, DEFINITIONS_PATH, INSTRUCTIONS, SAMPLE_FIELDS, SAMPLE_PATH, state
+from .demo import DEMO, ADJUDICATED_PATH, COMPANIES_PATH, DEFINITIONS_PATH, INSTRUCTIONS, SAMPLE_FIELDS, SAMPLE_PATH, state
 from .schemas import OTHER, SEED_DOMAIN_DEFINITIONS, build, load_definitions
 
 app = typer.Typer(add_completion=False)
@@ -133,7 +133,7 @@ def estimate_costs(sample: list[dict]) -> None:
     def rows(backend: str, *models, per_record=None, records=sample, cached=False) -> list[dict]:
         return estimated_rows(backend, *models, records=records, per_record=per_record, cached=cached)
 
-    sonnet = 'sonnet_thinking' if ACT.sonnet_thinking else 'sonnet'
+    sonnet = 'sonnet_thinking' if DEMO.sonnet_thinking else 'sonnet'
     subset = sample[:domain_runs.SUBSET]
     runs = [
         ('jev_flat', 'jev', rows('jev', s.flat)),
@@ -141,7 +141,7 @@ def estimate_costs(sample: list[dict]) -> None:
         ('jev_sequential', 'jev', rows('jev', s.domain, per_record=lambda r: [s.sub[r['label']]] if r['label'] in s.sub else [])),
         ('jev_fanout', 'jev', rows('jev', s.fan_out)),
         ('jev_nouls', 'jev', rows('jev', s.footprint)),
-        (f'sonnet (thinking {"on" if ACT.sonnet_thinking else "off"})', sonnet, rows(sonnet, s.nested, cached=not ACT.sonnet_thinking)),
+        (f'sonnet (thinking {"on" if DEMO.sonnet_thinking else "off"})', sonnet, rows(sonnet, s.nested, cached=not DEMO.sonnet_thinking)),
         (f'sonnet_thinking, first {len(subset)}', 'sonnet_thinking', rows('sonnet_thinking', s.nested, records=subset)),
         ('opus adjudication, if every company is disputed', 'opus', rows('opus', s.adjudication)),
     ]
@@ -346,7 +346,7 @@ def classify(
         raise typer.BadParameter(f'unknown runs {unknown}; one of {", ".join(domain_runs.RUNS)}')
     require_companies()
     configure_logfire()
-    asyncio.run(domain_runs.run(names, build(load_definitions()), ACT.records(limit), tag, retry_errors))
+    asyncio.run(domain_runs.run(names, build(load_definitions()), DEMO.records(limit), tag, retry_errors))
 
 
 if __name__ == '__main__':
@@ -369,10 +369,10 @@ def adjudicate(
     """Opus labels every disputed company, blind: it sees the company text, not YC's label or any run's pick."""
     require_companies()
     s = build(load_definitions())
-    companies = {r['id']: r for r in ACT.records()}
+    companies = {r['id']: r for r in DEMO.records()}
     picks: dict[str, dict[str, list]] = {}
     for run in runs.split(','):
-        for r in read_jsonl(RESULTS_DIR / f'{ACT.name}.{run}.jsonl'):
+        for r in read_jsonl(RESULTS_DIR / f'{DEMO.name}.{run}.jsonl'):
             if 'error' not in r:
                 picks.setdefault(r['id'], {})[run] = list(domain_runs.pick(run, r['output'], s))
     yc = lambda c: [c['label'], c['sub_label']]

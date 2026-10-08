@@ -49,8 +49,13 @@ The state each backend sees is the command and the agent's description of it.
 
 `label` runs Opus with thinking on every command, with an extra `explanation` field, and writes
 `data/labels.jsonl`. Hand-correct the ones you disagree with and set `"corrected": true` on them. These are
-reference labels, a careful model's reading plus your corrections, not ground truth. The committed code uses
-Opus 5.5; the labels behind the published numbers were made with Opus 5.
+reference labels, a careful model's reading plus your corrections, not ground truth. The labels behind the
+published numbers were made with Opus 5.5 (99 commands, $0.67).
+
+Opus can refuse to judge a command. Of the 100 here, it refused one, a `python3 -c` that reads a CLI tool's
+config file from `$HOME`, under its cyber-content filter. `label` keeps going when that happens: the refused
+command keeps its previous label (in this sample, one Opus 5 made), with the error in `kept_after_error`. A
+guardrail that escalates to a language model needs the same fallback, because a refusal is not an answer.
 
 ## Runs
 
@@ -62,7 +67,7 @@ Opus 5.5; the labels behind the published numbers were made with Opus 5.
 | `luna_fallback` | `openai:gpt-6-luna` | n/a | optional third column through OpenAI structured outputs; its confidence is self-reported |
 
 Sonnet thinks here because it is the model that settles the hard cases. The setting is `sonnet_thinking=True`
-in `guardrail/act.py`; what thinking on and off change in how Claude receives the schema is explained once in
+in `guardrail/demo.py`; what thinking on and off change in how Claude receives the schema is explained once in
 the README, [How thinking changes the request](../README.md#how-thinking-changes-the-request). The
 `luna` backend (OpenAI's Decisions API) is a stub until that API is generally available.
 
@@ -71,7 +76,7 @@ the README, [How thinking changes the request](../README.md#how-thinking-changes
 ```
 uv run mine-sessions                                         # ~/.claude/projects -> data/commands.jsonl
 uv run label                                                 # Opus reference labels -> data/labels.jsonl
-uv run run-act --act guardrail --backends jev,sonnet,sonnet_no_thinking
+uv run run-demo --demo guardrail --backends jev,sonnet,sonnet_no_thinking
 uv run report guardrail
 ```
 
