@@ -418,8 +418,10 @@ def adjudicate(
         return await asyncio.gather(*(one(c) for c in todo))
 
     labelled = {r['id']: r for r in asyncio.run(go())}
+    # A kept label stays even when the runs passed this time don't dispute its company.
     rows = [kept.get(c['id']) or labelled[c['id']] for c in disputed]
+    rows += [r for i, r in kept.items() if i not in {c['id'] for c in disputed}]
     write_jsonl(ADJUDICATED_PATH, rows)
-    ok = [r for r in rows if 'error' not in r and r['id'] in labelled]
-    typer.echo(f'wrote {len(rows)} to {ADJUDICATED_PATH} ({len(rows) - len(ok) - len(kept)} errors), USD {cost(ok, "opus"):.2f}. '
+    ok = [r for r in labelled.values() if 'error' not in r]
+    typer.echo(f'wrote {len(rows)} to {ADJUDICATED_PATH} ({len(labelled) - len(ok)} errors), USD {cost(ok, "opus"):.2f}. '
                'Edit freely; set "corrected": true on rows you change.')

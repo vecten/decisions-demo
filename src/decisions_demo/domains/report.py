@@ -99,8 +99,8 @@ class Data:
         return [n for n in names if n in self.picks]
 
     def models(self, shape_: str) -> list[str]:
-        """The decision models with a run of this shape, e.g. ['jev', 'luna'] for 'flat'."""
-        return [m for m in DECISION_MODELS if f'{m}_{shape_}' in self.ok]
+        """The decision models with a run of this shape that answered something, e.g. ['jev', 'luna'] for 'flat'."""
+        return [m for m in DECISION_MODELS if self.ok.get(f'{m}_{shape_}')]
 
     def top(self, i: str, k: int = 3, model: str = 'jev') -> list[tuple[str, float]]:
         """A decision model's flat run: its top-k subindustries for a company."""
@@ -174,6 +174,9 @@ def routing(d: Data) -> None:
         return
     sonnet_cost = cost(list(d.ok['sonnet'].values()), 'sonnet') / len(d.ok['sonnet'])
     ids = {m: [i for i in d.picks[f'{m}_flat'] if i in d.picks['sonnet']] for m in models}
+    models = [m for m in models if ids[m]]
+    if not models:
+        return
     unit_cost = {m: cost(list(d.ok[f'{m}_flat'].values()), m) / len(d.ok[f'{m}_flat']) for m in models}
 
     def evaluate(m: str, t1: float, margin: float) -> tuple[int, int, int]:
@@ -298,6 +301,8 @@ def _confidences(d: Data, run: str) -> dict[str, tuple[list[float], list[bool]]]
 
 def _ece(confs: list[float], right: list[bool], bins: int = 10) -> float:
     """Expected calibration error: |accuracy - confidence| per 0.1 bucket, weighted by bucket size."""
+    if not confs:
+        return float('nan')
     total = 0.0
     for b in range(bins):
         idx = [k for k, c in enumerate(confs) if b / bins <= c < (b + 1) / bins or (b == bins - 1 and c == 1.0)]
@@ -427,6 +432,8 @@ def stability(d: Data) -> None:
             continue
         ids = [i for i in a if i in b]
         diffs = [abs(a[i]['confidence'][k] - b[i]['confidence'][k]) for i in ids for k in a[i]['confidence'] if k in b[i]['confidence']]
+        if not diffs:
+            continue
         flips = sum(d.picks[run][i] != d.picks[f'{run}_rerun'][i] for i in ids) if run in d.picks else None
         t.add_row(run, _pct(sum(a[i]['output'] == b[i]['output'] for i in ids), len(ids)),
                   _pct(flips, len(ids)) if flips is not None else '–', f'{statistics.mean(diffs):.3f}', f'{max(diffs):.2f}')

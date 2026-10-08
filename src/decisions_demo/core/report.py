@@ -61,7 +61,9 @@ def cost(rows: list[dict], backend: str) -> float:
         try:
             total += float(calc_price(usage, model, provider_id=provider).total_price)
         except LookupError:
-            pin, pout, pread = FALLBACK_PRICES.get(family(backend), (0, 0, 0))
+            if family(backend) not in FALLBACK_PRICES:
+                raise LookupError(f'no price for {backend!r}: add it to MODELS or FALLBACK_PRICES in core/report.py') from None
+            pin, pout, pread = FALLBACK_PRICES[family(backend)]
             uncached = r.get('input_tokens', 0) - read - write
             total += ((uncached + write * CACHE_WRITE) * pin + read * pread + r.get('output_tokens', 0) * pout) / 1e6
     return total

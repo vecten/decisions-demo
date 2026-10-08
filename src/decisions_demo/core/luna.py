@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
-from openai import APIConnectionError, APIStatusError, AsyncOpenAI
+from openai import NOT_GIVEN, APIConnectionError, APIError, APIStatusError, AsyncOpenAI
 from pydantic import JsonValue
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError, UnexpectedModelBehavior
 from pydantic_ai.models.decision import (
@@ -116,7 +116,7 @@ class LunaModel(DecisionModel):
                 model=self._model_name,
                 input=_text(request.state),
                 questions=[_question(n, q) for n, q in request.questions.items()],
-                timeout=model_settings.get('timeout'),
+                timeout=model_settings.get('timeout', NOT_GIVEN),  # unset keeps the SDK's default, not "no timeout"
                 extra_headers=model_settings.get('extra_headers'),
                 extra_body=model_settings.get('extra_body'),
             )
@@ -124,11 +124,13 @@ class LunaModel(DecisionModel):
             raise ModelHTTPError(status_code=e.status_code, model_name=self._model_name, body=e.body) from e
         except APIConnectionError as e:
             raise ModelAPIError(model_name=self._model_name, message=str(e)) from e
+        except APIError as e:  # a response the SDK couldn't read
+            raise UnexpectedModelBehavior(f'Invalid response from the Decisions API: {e}') from e
         # Answers come back in question order; the name is echoed too, but optional in the SDK's types.
         answers = {a.name or names[k]: _answer(a) for k, a in enumerate(response.answers)}
         if answers.keys() != set(names):
             raise UnexpectedModelBehavior(f'Luna answered {sorted(answers)}, asked {names}')
-        # Usage also reports cached and cache-write tokens, but neither is billed differently: every input token
-        # is $0.10 per million. Only input_tokens is passed on, so core.report.cost prices them all the same.
-        return DecisionResponse(answers=answers, model_name=response.model,
-                                usage=RequestUsage(input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens))
+        # Usage also reports output, cached and cache-write tokens, none of them billed: every input token is $0.10
+        # per million and nothing else costs. Only input_tokens is passed on, so core.report.cost (which prices
+        # gpt-6-luna at its chat rates) charges exactly that.
+        return DecisionResponse(answers=answers, model_name=response.model, usage=RequestUsage(input_tokens=response.usage.input_tokens))
