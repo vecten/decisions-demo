@@ -6,6 +6,7 @@ import json
 import statistics
 from pathlib import Path
 
+from genai_prices import Usage, calc_price
 from rich.console import Console
 from rich.table import Table
 
@@ -13,15 +14,23 @@ from .demo import Demo
 
 console = Console()
 
-# USD per million tokens (input, output).
-PRICES = {
-    'jev': (0.042, 0.0),
-    'sonnet': (2.0, 10.0),        # Claude Sonnet 5.5 list price (same as Sonnet 5)
-    'opus': (4.0, 20.0),          # Claude Opus 5.5 list price
-    'luna': (0.10, 0.0),          # OpenAI Decisions API, public beta (2026-10-09): input only, no cache pricing
-    'luna_fallback': (0.10, 0.50),  # gpt-6-luna list price, short context, standard tier (2026-10-09)
-    'gpt-6.1-sol': (2.0, 10.0),   # OpenAI list price, short context, standard tier (2026-10-06); writes demo 2's emails
+# Backend family -> the (provider, model) genai-prices prices it as. genai-prices is the package Pydantic AI
+# prices runs with; its data ships with the installed version (uv.lock), so a report gives the same numbers on
+# every machine and never goes online for them.
+MODELS = {
+    'jev': ('typesafe', 'jev-latest'),
+    # genai-prices has gpt-6-luna's chat price. The Decisions API bills the same $0.10 per million input tokens
+    # and nothing for output or caching; core/luna.py records neither, so the chat price comes out the same.
+    'luna': ('openai', 'gpt-6-luna'),
+    'sonnet': ('anthropic', 'claude-sonnet-5-5'),
+    'opus': ('anthropic', 'claude-opus-5-5'),
+    'gpt-6.1-sol': ('openai', 'gpt-6.1-sol'),
 }
+# USD per million (input, output, cache read) for models the installed genai-prices doesn't know yet.
+FALLBACK_PRICES = {
+    'gpt-6.1-sol': (2.0, 10.0, 0.10),  # OpenAI list price, short context, standard tier (2026-10-06); not in genai-prices 0.1.9
+}
+CACHE_WRITE = 1.25  # relative to input, for the fallback prices
 
 
 def load(path: Path) -> dict[str, dict]:
@@ -35,26 +44,27 @@ def load_results(demo: str, results_dir: Path) -> dict[str, dict[str, dict]]:
     return {p.stem.split('.')[1]: load(p) for p in sorted(results_dir.glob(f'{demo}.*.jsonl'))}
 
 
-# Prompt caching, relative to the input price: Anthropic's 5-minute cache writes, and cache reads by family.
-CACHE_WRITE = 1.25
-CACHE_READ = {'opus': 0.05, 'gpt-6.1-sol': 0.05}  # Opus 5.5 $0.20, gpt-6.1-sol $0.10 per million; everything else 0.1x
-
-
-def prices(backend: str) -> tuple[float, float]:
-    """By backend name, else by model family: sonnet_no_thinking is billed as sonnet."""
-    return PRICES.get(backend) or PRICES.get(backend.split('_')[0], (0, 0))
+def family(backend: str) -> str:
+    """The model family a backend is billed as: sonnet_no_thinking as sonnet, luna_fallback as luna."""
+    return backend if backend in MODELS else backend.split('_')[0]
 
 
 def cost(rows: list[dict], backend: str) -> float:
-    """input_tokens includes cached tokens (Pydantic AI's convention), so those are repriced, not added."""
-    pin, pout = prices(backend)
-    read_rate = CACHE_READ.get(backend.split('_')[0], 0.1)
+    """USD for these rows' usage. input_tokens includes cached tokens (Pydantic AI's and genai-prices'
+    convention), so those are repriced, not added."""
+    provider, model = MODELS.get(family(backend), (None, family(backend)))
     total = 0.0
     for r in rows:
         read, write = r.get('cache_read_tokens', 0), r.get('cache_write_tokens', 0)
-        uncached = r.get('input_tokens', 0) - read - write
-        total += (uncached + write * CACHE_WRITE + read * read_rate) * pin + r.get('output_tokens', 0) * pout
-    return total / 1e6
+        usage = Usage(input_tokens=round(r.get('input_tokens', 0)), output_tokens=round(r.get('output_tokens', 0)),
+                      cache_read_tokens=round(read), cache_write_tokens=round(write))
+        try:
+            total += float(calc_price(usage, model, provider_id=provider).total_price)
+        except LookupError:
+            pin, pout, pread = FALLBACK_PRICES.get(family(backend), (0, 0, 0))
+            uncached = r.get('input_tokens', 0) - read - write
+            total += ((uncached + write * CACHE_WRITE) * pin + read * pread + r.get('output_tokens', 0) * pout) / 1e6
+    return total
 
 
 # Routing a Choice to the language model, shared by every demo that routes on Jev's distribution.

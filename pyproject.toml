@@ -12,6 +12,7 @@ dependencies = [
     "httpx2>=2.13",
     "matplotlib>=3.11.2",
     "openai>=3.26.0",
+    "genai-prices>=0.1.9",
 ]
 
 [project.scripts]

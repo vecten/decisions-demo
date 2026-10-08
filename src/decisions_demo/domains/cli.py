@@ -129,7 +129,7 @@ def estimated_rows(backend: str, *models, records: list[dict], per_record=None, 
 
 
 def estimate_costs(sample: list[dict]) -> None:
-    """What each planned run would cost on this sample, from the real schemas and the price table."""
+    """What each planned run would cost on this sample, from the real schemas and genai-prices (core/report.py)."""
     if not DEFINITIONS_PATH.exists():
         typer.echo(f'no {DEFINITIONS_PATH} yet; run `domains define` for a cost preview')
         return
@@ -153,7 +153,7 @@ def estimate_costs(sample: list[dict]) -> None:
         (f'sonnet_thinking, first {len(subset)}', 'sonnet_thinking', rows('sonnet_thinking', s.nested, records=subset)),
         ('opus adjudication, if every company is disputed', 'opus', rows('opus', s.adjudication)),
     ]
-    typer.echo(f'estimated cost for {len(sample)} companies (prices from core/report.py PRICES; Jev and Luna reruns cost the same again):')
+    typer.echo(f'estimated cost for {len(sample)} companies (prices from genai-prices, see core/report.py; Jev and Luna reruns cost the same again):')
     for name, backend, rs in runs:
         typer.echo(f'  {name:48} {sum(r["input_tokens"] for r in rs) / len(rs):6.0f} in-tokens/company   USD {cost(rs, backend):8.4f}')
 

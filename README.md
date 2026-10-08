@@ -101,8 +101,10 @@ Thinking changes more than how hard Claude works: it decides how Pydantic AI sen
 - Every run writes `data/results/<demo>.<run>.jsonl`: one row per record with the parsed output, Jev's
   confidence and full probabilities, Claude's rationale, wall-clock latency, and input, output and cache tokens.
   A failed call is kept as a row with an `error`.
-- Cost is computed from those tokens and the price table in `core/report.py`, with cache writes at 1.25× and
-  cache reads at 0.1× the input price. Jev and Luna bill input only.
+- Cost is computed from those tokens with [genai-prices](https://github.com/pydantic/genai-prices), the price
+  data Pydantic AI uses, at the version pinned in `uv.lock`, so every machine gets the same numbers offline. It
+  prices cache reads and writes per model. A model it doesn't list yet gets a dated list price in
+  `core/report.py`. Jev and Luna bill input only.
 - Latency is measured with several requests in flight per backend (`core/runner.py`); the reports state the
   concurrency next to the numbers.
 - Reference labels come from a careful model (Opus with thinking) or, in demo 2, from the OpenAI model that
