@@ -10,7 +10,7 @@ data is not redistributed; the commands below rebuild it on your machine.
 |---|---|---|
 | `data/company_sample.jsonl` | Demo 3's 500-company sample: YC id, company name, YC's industry and subindustry, batch, and a hash of each description. No descriptions. | sampled by `domains fetch` |
 | `data/domain_definitions.json` | Demo 3's taxonomy: one definition per domain and per subindustry | domains by hand, subindustries by Claude Sonnet, reviewed |
-| `data/results/domains.*.jsonl` | Every demo 3 model run: outputs, probabilities, rationales, latency, tokens | Jev (TypeSafe), Claude Sonnet 5.5 (Anthropic) |
+| `data/results/domains.*.jsonl` | Every demo 3 model run: outputs, probabilities, rationales, latency, tokens | Jev (TypeSafe), `gpt-6-luna` (OpenAI), Claude Sonnet 5.5 (Anthropic) |
 | `data/domain_adjudicated.jsonl` | Labels with one-sentence explanations for the companies the runs disputed | Claude Opus 5.5 (Anthropic) |
 | `data/figures/*.png` | Demo 3's Noul heatmaps | `report domains` |
 | `data/deals.jsonl` | Demo 2's 50 synthetic emails, with intended labels and a reason per label | OpenAI `gpt-6.1-sol` |
@@ -32,6 +32,7 @@ Model rationales and explanations describe the companies in the models' own word
 - Company data: [Y Combinator's company directory](https://www.ycombinator.com/companies), through
   [yc-oss/api](https://github.com/yc-oss/api), an unofficial public mirror that declares no licence. The
   descriptions belong to YC and the companies, which is why they are rebuilt locally rather than committed.
-- Decision model: Jev by [TypeSafe](https://typesafe.ai).
+- Decision models: Jev by [TypeSafe](https://typesafe.ai); `gpt-6-luna` by [OpenAI](https://openai.com), through
+  its Decisions API (public beta).
 - Language models: Claude Sonnet 5.5 and Claude Opus 5.5 by [Anthropic](https://www.anthropic.com); demo 2's
   emails by `gpt-6.1-sol` from [OpenAI](https://openai.com).
