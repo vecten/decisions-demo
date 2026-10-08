@@ -43,7 +43,9 @@ def routing_fit(results: dict[str, dict[str, dict]], labels: dict[str, dict], ba
     backends = tuple(b for b in backends if b in results)
     if not backends or 'sonnet' not in results:
         return
-    t = Table(title=f'routing fit on "{field}": {" / ".join(backends)} outside band, sonnet inside')
+    # Every backend scored on the same commands: those each decision model answered and the labels cover.
+    ids = set(labels).intersection(*({i for i, r in results[b].items() if 'error' not in r} for b in backends))
+    t = Table(title=f'routing fit on "{field}": {" / ".join(backends)} outside band, sonnet inside ({len(ids)} commands)')
     t.add_column('band')
     for b in backends:
         t.add_column(f'{b} routed', justify='right'); t.add_column(f'{b} + sonnet', justify='right'); t.add_column(f'{b} alone', justify='right')
@@ -54,7 +56,7 @@ def routing_fit(results: dict[str, dict[str, dict]], labels: dict[str, dict], ba
         lo, hi = 0.5 - half, 0.5 + half
         cells = []
         for b in backends:
-            rows = [r for r in results[b].values() if 'error' not in r and r['id'] in labels]
+            rows = [r for r in results[b].values() if r['id'] in ids]
             routed, correct, alone = 0, 0, 0
             for r in rows:
                 truth = labels[r['id']]['label'][field]

@@ -94,7 +94,7 @@ Thinking changes more than how hard Claude works: it decides how Pydantic AI sen
   output in strict mode, uncached. Strict mode keeps each option's description but stops enforcing the option
   list itself, so an answer outside it is caught by Pydantic validation and retried. Strict mode also requires a
   `type` on every option, which Pydantic AI's `Choices` and `BoolCriteria` don't emit; demo 3 builds its options
-  with its own `schemas.options()` for that reason, and its yes/no questions run on Jev only.
+  with its own `schemas.options()` for that reason, and its yes/no questions run on the decision models only.
 
 ### Results, cost and latency
 
