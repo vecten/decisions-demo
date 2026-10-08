@@ -18,8 +18,8 @@ PRICES = {
     'jev': (0.042, 0.0),
     'sonnet': (2.0, 10.0),        # Claude Sonnet 5.5 list price (same as Sonnet 5)
     'opus': (4.0, 20.0),          # Claude Opus 5.5 list price
-    'luna': (0.10, 0.50),         # speculated in press, not announced
-    'luna_fallback': (0.10, 0.50),
+    'luna': (0.10, 0.0),          # OpenAI Decisions API, public beta (2026-10-09): input only, no cache pricing
+    'luna_fallback': (0.10, 0.50),  # gpt-6-luna list price, short context, standard tier (2026-10-09)
     'gpt-6.1-sol': (2.0, 10.0),   # OpenAI list price, short context, standard tier (2026-10-06); writes demo 2's emails
 }
 

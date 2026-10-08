@@ -31,8 +31,6 @@ async def run_backend(backend: Backend, demo: Demo, records: list[dict], out: Pa
             try:
                 d = await backend.decide(demo.state(rec), demo.schema, demo.instructions)
                 return {'id': rec['id'], **d.to_record()}
-            except NotImplementedError as e:
-                return {'id': rec['id'], 'backend': backend.name, 'error': str(e)}
             except Exception as e:  # keep the batch alive, record the failure
                 logfire.warn('decision failed', backend=backend.name, id=rec['id'], error=str(e))
                 return {'id': rec['id'], 'backend': backend.name, 'error': repr(e)}
