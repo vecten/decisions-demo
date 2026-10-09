@@ -14,3 +14,5 @@ data/companies.jsonl
 data/backups/
 # Left behind by `domains classify --retry-errors` if it is interrupted.
 *.retry.jsonl
+# The research report quotes mined session commands (see data/commands.jsonl above): local only.
+report/

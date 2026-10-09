@@ -26,11 +26,13 @@ MODELS = {
     'opus': ('anthropic', 'claude-opus-5-5'),
     'gpt-6.1-sol': ('openai', 'gpt-6.1-sol'),
 }
-# USD per million (input, output, cache read) for models the installed genai-prices doesn't know yet.
-FALLBACK_PRICES = {
-    'gpt-6.1-sol': (2.0, 10.0, 0.10),  # OpenAI list price, short context, standard tier (2026-10-06); not in genai-prices 0.1.9
+# USD per million (input, output, cache read, cache write), used instead of genai-prices: for models the installed
+# version doesn't know yet, or prices wrong.
+PRICE_OVERRIDES = {
+    'gpt-6.1-sol': (2.0, 10.0, 0.10, 2.50),  # OpenAI list price, short context, standard tier (2026-10-06); not in genai-prices 0.1.9
+    # genai-prices 0.1.9 prices claude-sonnet-5-5 as claude-sonnet-5 by prefix match (cache read 0.20).
+    'sonnet': (2.0, 10.0, 0.10, 2.50),  # Anthropic's listed rate for Sonnet 5.5 (2026-10-09)
 }
-CACHE_WRITE = 1.25  # relative to input, for the fallback prices
 
 
 def load(path: Path) -> dict[str, dict]:
@@ -56,16 +58,17 @@ def cost(rows: list[dict], backend: str) -> float:
     total = 0.0
     for r in rows:
         read, write = r.get('cache_read_tokens', 0), r.get('cache_write_tokens', 0)
+        if family(backend) in PRICE_OVERRIDES:
+            pin, pout, pread, pwrite = PRICE_OVERRIDES[family(backend)]
+            uncached = r.get('input_tokens', 0) - read - write
+            total += (uncached * pin + read * pread + write * pwrite + r.get('output_tokens', 0) * pout) / 1e6
+            continue
         usage = Usage(input_tokens=round(r.get('input_tokens', 0)), output_tokens=round(r.get('output_tokens', 0)),
                       cache_read_tokens=round(read), cache_write_tokens=round(write))
         try:
             total += float(calc_price(usage, model, provider_id=provider).total_price)
         except LookupError:
-            if family(backend) not in FALLBACK_PRICES:
-                raise LookupError(f'no price for {backend!r}: add it to MODELS or FALLBACK_PRICES in core/report.py') from None
-            pin, pout, pread = FALLBACK_PRICES[family(backend)]
-            uncached = r.get('input_tokens', 0) - read - write
-            total += ((uncached + write * CACHE_WRITE) * pin + read * pread + r.get('output_tokens', 0) * pout) / 1e6
+            raise LookupError(f'no price for {backend!r}: add it to MODELS or PRICE_OVERRIDES in core/report.py') from None
     return total
 
 
