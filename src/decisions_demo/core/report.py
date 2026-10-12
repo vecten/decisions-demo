@@ -13,6 +13,8 @@ from rich.table import Table
 from .demo import Demo
 
 console = Console()
+if not console.is_terminal:  # piped (`report all > out.md`): Rich would wrap every table at 80 columns
+    console.width = 250
 
 # Backend family -> the (provider, model) genai-prices prices it as. genai-prices is the package Pydantic AI
 # prices runs with; its data ships with the installed version (uv.lock), so a report gives the same numbers on
@@ -70,6 +72,36 @@ def cost(rows: list[dict], backend: str) -> float:
         except LookupError:
             raise LookupError(f'no price for {backend!r}: add it to MODELS or PRICE_OVERRIDES in core/report.py') from None
     return total
+
+
+# The Markdown tables report.md copies. Plain print, not Rich: Rich would wrap long rows and read [brackets] as markup.
+def md(text: str = '') -> None:
+    print(text)
+
+
+def table(headers: list[str], rows: list[list], align: list[str] | None = None) -> None:
+    align = align or ['---'] * len(headers)
+    md('| ' + ' | '.join(headers) + ' |')
+    md('| ' + ' | '.join(align) + ' |')
+    for r in rows:
+        md('| ' + ' | '.join(str(c).replace('|', '\\|').replace('\n', ' ') for c in r) + ' |')
+    md('')
+
+
+def pct(k: int, n: int) -> str:
+    return f'{k / n:.0%}' if n else '–'
+
+
+def ece(confs: list[float], right: list[bool], bins: int = 10) -> float:
+    """Expected calibration error: |accuracy - confidence| per 0.1 bucket, weighted by bucket size."""
+    if not confs:
+        return float('nan')
+    total = 0.0
+    for b in range(bins):
+        idx = [k for k, c in enumerate(confs) if b / bins <= c < (b + 1) / bins or (b == bins - 1 and c == 1.0)]
+        if idx:
+            total += len(idx) * abs(sum(right[k] for k in idx) / len(idx) - statistics.mean(confs[k] for k in idx))
+    return total / len(confs)
 
 
 # Routing a Choice to the language model, shared by every demo that routes on Jev's distribution.

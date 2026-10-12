@@ -15,7 +15,8 @@ shows Luna next to Jev; the routed-companies list, the confusion tables and the 
 
 Sections: scoreboards, level 2 given level 1, per domain and per subindustry (n >= 10), routing Jev or
 Luna -> Sonnet, routed companies, confusion pairs and matrix, flat vs fan-out, calibration, Nouls, duality,
-stability, latency, and a Nouls heatmap saved as images.
+stability, latency, and a Nouls heatmap saved as images. Then, as Markdown, the remaining tables the research
+report uses (`tables`), ending with the domain-level views.
 
 The B2B Noul is reported apart from the five sector Nouls (see B2B_NOTE): it asks whether a company sells to
 businesses, which is a different question from YC's B2B label, so it is shown as a fire rate and kept out of
@@ -25,6 +26,7 @@ precision/recall, Jaccard and duality.
 from __future__ import annotations
 
 import collections
+import math
 import re
 import statistics
 from dataclasses import replace
@@ -32,7 +34,8 @@ from pathlib import Path
 
 from rich.table import Table
 
-from ..core.report import ROUTE, ROUTE_SETTINGS, console, cost, load, route_label, scoreboard, uncertain
+from ..core.demo import RESULTS_DIR
+from ..core.report import ROUTE, ROUTE_SETTINGS, console, cost, ece, load, load_results, md, pct, route_label, scoreboard, table, uncertain
 from ..core.runner import concurrency
 from .demo import DEMO, ADJUDICATED_PATH, SAMPLE_PATH
 from .runs import CHOICE_RUNS, DECISION_MODELS, MAIN_RUNS, pick, shape
@@ -52,10 +55,6 @@ B2B_NOTE = (
     "definitions, not Jev, so B2B is shown only as the share of companies it fires for, and the sector tables, "
     "Jaccard and duality use the five sector Nouls."
 )
-
-
-def _pct(hits: int, n: int) -> str:
-    return f'{hits / n:.0%}' if n else '–'
 
 
 def _name(p: Pair) -> str:
@@ -136,7 +135,7 @@ def scoreboards(d: Data) -> None:
         cells = []
         for ref in (d.yc, d.ref):
             hits = [p[1] == ref[i][1] for i, p in d.picks[run].items() if ref[i][1] and p[0] == ref[i][0]]
-            cells.append(_pct(sum(hits), len(hits)))
+            cells.append(pct(sum(hits), len(hits)))
         t.add_row(run, *cells)
     console.print(t)
 
@@ -149,7 +148,7 @@ def breakdown(d: Data, min_n: int = 10) -> None:
         t.add_column(run, justify='right')
     for dom in (*d.s.domains, OTHER):
         ids = [i for i in d.companies if d.ref[i][0] == dom]
-        t.add_row(dom, str(len(ids)), *(_pct(sum(d.picks[r][i] == d.ref[i] for i in ids if i in d.picks[r]),
+        t.add_row(dom, str(len(ids)), *(pct(sum(d.picks[r][i] == d.ref[i] for i in ids if i in d.picks[r]),
                                               sum(i in d.picks[r] for i in ids)) for r in runs))
     console.print(t)
 
@@ -162,7 +161,7 @@ def breakdown(d: Data, min_n: int = 10) -> None:
         if n < min_n:
             continue
         ids = [i for i in d.companies if d.ref[i] == (dom, sub)]
-        t.add_row(SHORT[dom], sub, str(n), *(_pct(sum(d.picks[r][i] == d.ref[i] for i in ids if i in d.picks[r]),
+        t.add_row(SHORT[dom], sub, str(n), *(pct(sum(d.picks[r][i] == d.ref[i] for i in ids if i in d.picks[r]),
                                                    sum(i in d.picks[r] for i in ids)) for r in runs))
     console.print(t)
 
@@ -195,7 +194,7 @@ def routing(d: Data) -> None:
         for m in models:
             k, l1, l2 = evaluate(m, t1, margin)
             n = len(ids[m])
-            cells += [_pct(k, n), _pct(l1, n), _pct(l2, n), f'{1000 * (unit_cost[m] + sonnet_cost * k / n):.2f}']
+            cells += [pct(k, n), pct(l1, n), pct(l2, n), f'{1000 * (unit_cost[m] + sonnet_cost * k / n):.2f}']
         t.add_row(route_label(t1, margin), *cells)
     console.print(t)
     console.print('alone at level 2: ' + ', '.join(
@@ -215,7 +214,7 @@ def routing(d: Data) -> None:
         for m in models:
             n = len(ids[m])
             best = max((x for x in scored[m] if x[2] <= budget * n), key=lambda x: (x[4], -x[2]))
-            cells += [f'{best[0]:.2f}', f'{best[1]:.2f}', _pct(best[2], n), _pct(best[4], n)]
+            cells += [f'{best[0]:.2f}', f'{best[1]:.2f}', pct(best[2], n), pct(best[4], n)]
         t.add_row(f'<= {budget:.0%}', *cells)
     console.print(t)
 
@@ -272,8 +271,8 @@ def shapes(d: Data) -> None:
             continue
         ids = [i for i in d.picks[a] if i in d.picks[b]]
         same_dom = [i for i in ids if d.picks[a][i][0] == d.picks[b][i][0]]
-        t.add_row(f'{a} vs {b}', str(len(ids)), _pct(len(same_dom), len(ids)), _pct(sum(d.picks[a][i] == d.picks[b][i] for i in ids), len(ids)),
-                  _pct(sum(d.picks[a][i] == d.picks[b][i] for i in same_dom), len(same_dom)))
+        t.add_row(f'{a} vs {b}', str(len(ids)), pct(len(same_dom), len(ids)), pct(sum(d.picks[a][i] == d.picks[b][i] for i in ids), len(ids)),
+                  pct(sum(d.picks[a][i] == d.picks[b][i] for i in same_dom), len(same_dom)))
     console.print(t)
 
 
@@ -299,18 +298,6 @@ def _confidences(d: Data, run: str) -> dict[str, tuple[list[float], list[bool]]]
     return out
 
 
-def _ece(confs: list[float], right: list[bool], bins: int = 10) -> float:
-    """Expected calibration error: |accuracy - confidence| per 0.1 bucket, weighted by bucket size."""
-    if not confs:
-        return float('nan')
-    total = 0.0
-    for b in range(bins):
-        idx = [k for k, c in enumerate(confs) if b / bins <= c < (b + 1) / bins or (b == bins - 1 and c == 1.0)]
-        if idx:
-            total += len(idx) * abs(sum(right[k] for k in idx) / len(idx) - statistics.mean(confs[k] for k in idx))
-    return total / len(confs)
-
-
 def calibration(d: Data) -> None:
     runs = [run for m in DECISION_MODELS for run in d.runs(CHOICE_RUNS[m])]
     if not runs:
@@ -328,13 +315,13 @@ def calibration(d: Data) -> None:
             for level in ('L1', 'L2'):
                 confs, right = cal[run][level]
                 idx = [k for k, c in enumerate(confs) if b / 10 <= c < (b + 1) / 10 or (b == 9 and c == 1.0)]
-                row += [str(len(idx)), _pct(sum(right[k] for k in idx), len(idx))]
+                row += [str(len(idx)), pct(sum(right[k] for k in idx), len(idx))]
         t.add_row(*row)
     console.print(t)
     t = Table(title='expected calibration error (lower is better; L2 for sequential and fan-out is P(domain) x P(sub))')
     t.add_column('run'); t.add_column('ECE L1', justify='right'); t.add_column('ECE L2', justify='right')
     for run in runs:
-        t.add_row(run, *(f'{_ece(*cal[run][level]):.3f}' for level in ('L1', 'L2')))
+        t.add_row(run, *(f'{ece(*cal[run][level]):.3f}' for level in ('L1', 'L2')))
     console.print(t)
 
 
@@ -356,8 +343,8 @@ def nouls(d: Data) -> None:
         t.add_column(f'{m} B2B yes', justify='right')
     for dom in (*d.s.domains, OTHER):
         group = [i for i in ids if d.yc[i][0] == dom]
-        t.add_row(dom, str(len(group)), *(_pct(sum(noul[m][i][B2B] > 0.5 for i in group), len(group)) for m in models))
-    t.add_row('all', str(len(ids)), *(_pct(sum(noul[m][i][B2B] > 0.5 for i in ids), len(ids)) for m in models))
+        t.add_row(dom, str(len(group)), *(pct(sum(noul[m][i][B2B] > 0.5 for i in group), len(group)) for m in models))
+    t.add_row('all', str(len(ids)), *(pct(sum(noul[m][i][B2B] > 0.5 for i in ids), len(ids)) for m in models))
     console.print(t)
 
     secs = set(sectors(d))
@@ -376,7 +363,7 @@ def nouls(d: Data) -> None:
             row = [dom if m == models[0] else '', m, str(len(yes))]
             for truth in sets.values():
                 pos = [i for i in ids if dom in truth[i]]
-                row += [str(len(pos)), _pct(sum(dom in truth[i] for i in yes), len(yes)), _pct(sum(dom in pred[m][i] for i in pos), len(pos))]
+                row += [str(len(pos)), pct(sum(dom in truth[i] for i in yes), len(yes)), pct(sum(dom in pred[m][i] for i in pos), len(pos))]
             t.add_row(*row, end_section=m == models[-1])
     console.print(t)
     jacc = lambda a, b: 1.0 if not a and not b else len(a & b) / len(a | b)
@@ -435,8 +422,8 @@ def stability(d: Data) -> None:
         if not diffs:
             continue
         flips = sum(d.picks[run][i] != d.picks[f'{run}_rerun'][i] for i in ids) if run in d.picks else None
-        t.add_row(run, _pct(sum(a[i]['output'] == b[i]['output'] for i in ids), len(ids)),
-                  _pct(flips, len(ids)) if flips is not None else '–', f'{statistics.mean(diffs):.3f}', f'{max(diffs):.2f}')
+        t.add_row(run, pct(sum(a[i]['output'] == b[i]['output'] for i in ids), len(ids)),
+                  pct(flips, len(ids)) if flips is not None else '–', f'{statistics.mean(diffs):.3f}', f'{max(diffs):.2f}')
     console.print(t)
 
 
@@ -518,6 +505,422 @@ def heatmap(d: Data) -> list[Path]:
     return paths
 
 
+# ------------------------------------------------------------------ the Markdown tables report.md uses
+
+def _mark(d: Data, p: Pair, i: str) -> str:
+    return _name(p) + (' ✓' if p == d.ref[i] else '')
+
+
+def sample_facts(d: Data) -> None:
+    """Sample and reference counts, adjudication cost, and which runs disputed YC."""
+    n = len(d.companies)
+    md('## sample and reference facts\n')
+    md(f'- companies {n}; adjudicated {len(d.adjudicated)}; reference differs from YC on {sum(d.ref[i] != d.yc[i] for i in d.companies)} companies (domain differs on {sum(d.ref[i][0] != d.yc[i][0] for i in d.companies)}); secondary pair given on {sum(1 for i in d.secondary if d.secondary[i])}')
+    md(f'- reference per domain: {dict(collections.Counter(d.ref[i][0] for i in d.companies))}')
+    md(f'- YC per domain: {dict(collections.Counter(d.yc[i][0] for i in d.companies))}')
+    adj = list(d.adjudicated.values())
+    md(f'- adjudication cost {cost(adj, "opus"):.2f} USD; input tokens {sum(r["input_tokens"] for r in adj):,}, output {sum(r["output_tokens"] for r in adj):,}; latency p50 {statistics.median(r["latency_ms"] for r in adj):.0f} ms')
+    md(f'- corrected rows: {sum(bool(r.get("corrected")) for r in adj)}')
+    md('')
+    md('## which runs disputed (per company, how many runs disagreed with YC), and who sided with whom\n')
+    cnt = collections.Counter()
+    for i, r in d.adjudicated.items():
+        for run, p in r['picks'].items():
+            if tuple(p) != d.yc[i]:
+                cnt[run] += 1
+    md(f'- disagreements with YC per run among adjudicated companies: {dict(cnt)}')
+    for run in d.runs():
+        both = [i for i in d.adjudicated if i in d.picks[run]]
+        with_yc = sum(d.picks[run][i] == d.yc[i] for i in both)
+        with_ref = sum(d.picks[run][i] == d.ref[i] for i in both)
+        md(f'- {run} on the {len(both)} adjudicated companies it answered: agrees with YC {with_yc}, with the reference {with_ref}')
+    md('')
+
+
+def scoreboard_detail(d: Data) -> None:
+    """The scoreboard with tokens and cost per 1,000, the same-100 Sonnet comparison, level 1 per domain."""
+    md('## main scoreboard with cost per 1000 and tokens per company\n')
+    rows = []
+    for run in (*d.runs(), 'jev_nouls', 'luna_nouls'):
+        rs = list(d.ok[run].values())
+        lat = sorted(r['latency_ms'] for r in rs)
+        cells = [run, len(rs), len(d.results[run]) - len(rs)]
+        if run in d.picks:
+            for ref in (d.yc, d.ref):
+                cells += [pct(sum(d.picks[run][i][0] == ref[i][0] for i in d.picks[run]), len(rs)), pct(sum(d.picks[run][i] == ref[i] for i in d.picks[run]), len(rs))]
+        else:
+            cells += ['–'] * 4
+        cells += [f'{statistics.median(lat):.0f}', f'{lat[int(len(lat) * .95) - 1]:.0f}', f'{statistics.mean(r["input_tokens"] for r in rs):.0f}', f'{statistics.mean(r["output_tokens"] for r in rs):.0f}',
+                  f'{statistics.mean(r.get("cache_read_tokens", 0) for r in rs):.0f}', f'{cost(rs, run):.4f}', f'{1000 * cost(rs, run) / len(rs):.2f}']
+        rows.append(cells)
+    table(['run', 'n', 'errors', 'L1 vs YC', 'L2 vs YC', 'L1 vs ref', 'L2 vs ref', 'p50 ms', 'p95 ms', 'in tok', 'out tok', 'cache read', 'USD total', 'USD/1000'], rows)
+
+    md('## sonnet vs sonnet_thinking on the same first 100 companies\n')
+    sub = [i for i in d.picks['sonnet_thinking']]
+    rows = []
+    for run in ('sonnet', 'sonnet_thinking', 'jev_flat', 'luna_flat'):
+        rs = [d.ok[run][i] for i in sub if i in d.ok[run]]
+        cells = [run, len(rs)]
+        for ref in (d.yc, d.ref):
+            cells += [pct(sum(d.picks[run][i][0] == ref[i][0] for i in sub if i in d.picks[run]), len(rs)), pct(sum(d.picks[run][i] == ref[i] for i in sub if i in d.picks[run]), len(rs))]
+        lat = sorted(r['latency_ms'] for r in rs)
+        cells += [f'{statistics.median(lat):.0f}', f'{lat[int(len(lat) * .95) - 1]:.0f}', f'{statistics.mean(r["output_tokens"] for r in rs):.0f}', f'{1000 * cost(rs, run) / len(rs):.2f}']
+        rows.append(cells)
+    table(['run (first 100)', 'n', 'L1 vs YC', 'L2 vs YC', 'L1 vs ref', 'L2 vs ref', 'p50 ms', 'p95 ms', 'out tok', 'USD/1000'], rows)
+    md(f'- sonnet vs sonnet_thinking identical pick on the 100: {pct(sum(d.picks["sonnet"][i] == d.picks["sonnet_thinking"][i] for i in sub), len(sub))}')
+    md(f'- sonnet (thinking off) rationale present: {sum(bool(r.get("rationale")) for r in d.ok["sonnet"].values())} of {len(d.ok["sonnet"])}; thinking on: {sum(bool(r.get("rationale")) for r in d.ok["sonnet_thinking"].values())}')
+    md('')
+
+    md('## level 1 per domain (domain right, vs reference)\n')
+    rows = []
+    for dom in (*d.s.domains, OTHER):
+        ids3 = [i for i in d.companies if d.ref[i][0] == dom]
+        rows.append([dom, len(ids3), *(pct(sum(d.picks[r][i][0] == d.ref[i][0] for i in ids3 if i in d.picks[r]), sum(i in d.picks[r] for i in ids3)) for r in d.runs())])
+    table(['domain', 'n', *d.runs()], rows)
+
+
+def calibration_detail(d: Data) -> None:
+    """Calibration buckets with mean confidence, and ECE against YC as well as the reference."""
+    md('## calibration buckets at both levels: jev_flat and luna_flat (vs reference) with mean confidence per bucket\n')
+    cal = {run: _confidences(d, run) for run in ('jev_flat', 'luna_flat')}
+    rows = []
+    for b in range(10):
+        cells = [f'{b / 10:.1f}-{(b + 1) / 10:.1f}']
+        for run in ('jev_flat', 'luna_flat'):
+            for level in ('L1', 'L2'):
+                confs, right = cal[run][level]
+                idx = [k for k, c in enumerate(confs) if b / 10 <= c < (b + 1) / 10 or (b == 9 and c == 1.0)]
+                cells += [len(idx), pct(sum(right[k] for k in idx), len(idx)), f'{statistics.mean(confs[k] for k in idx):.2f}' if idx else '–']
+        rows.append(cells)
+    table(['bucket', 'jev n L1', 'jev acc L1', 'jev mean p', 'jev n L2', 'jev acc L2', 'jev mean p', 'luna n L1', 'luna acc L1', 'luna mean p', 'luna n L2', 'luna acc L2', 'luna mean p'], rows)
+    for run in ('jev_flat', 'luna_flat'):
+        for level in ('L1', 'L2'):
+            confs, right = cal[run][level]
+            md(f'- {run} {level}: mean confidence {statistics.mean(confs):.3f}, accuracy {statistics.mean(right):.3f}, ECE {ece(confs, right):.3f}, share with p >= 0.9: {pct(sum(c >= .9 for c in confs), len(confs))}')
+    md('')
+    md('## calibration vs YC instead of the reference (ECE)\n')
+    rows = []
+    for run in ('jev_flat', 'luna_flat', 'jev_sequential', 'luna_sequential', 'jev_fanout', 'luna_fanout'):
+        conf = _confidences(d, run)
+        cells = [run]
+        for level in ('L1', 'L2'):
+            confs, _ = conf[level]
+            ids3 = list(d.ok[run])
+            right_yc = [d.picks[run][i][0] == d.yc[i][0] if level == 'L1' else d.picks[run][i] == d.yc[i] for i in ids3]
+            cells += [f'{ece(confs, right_yc):.3f}', f'{ece(*conf[level]):.3f}']
+        rows.append(cells)
+    table(['run', 'ECE L1 vs YC', 'ECE L1 vs ref', 'ECE L2 vs YC', 'ECE L2 vs ref'], rows)
+
+
+def jev_vs_luna(d: Data) -> None:
+    """Jev flat against Luna flat: counts, who was right, and every disagreement."""
+    md('## Jev flat vs Luna flat: disagreements\n')
+    ids3 = [i for i in d.picks['jev_flat'] if i in d.picks['luna_flat']]
+    dis1 = [i for i in ids3 if d.picks['jev_flat'][i][0] != d.picks['luna_flat'][i][0]]
+    dis2 = [i for i in ids3 if d.picks['jev_flat'][i] != d.picks['luna_flat'][i] and i not in dis1]
+    md(f'- n {len(ids3)}; same domain {pct(len(ids3) - len(dis1), len(ids3))}; same subindustry {pct(len(ids3) - len(dis1) - len(dis2), len(ids3))}; domain disagreements {len(dis1)}; same domain but different subindustry {len(dis2)}')
+    md(f'- on the {len(dis1)} domain disagreements, right vs reference: jev {sum(d.picks["jev_flat"][i][0] == d.ref[i][0] for i in dis1)}, luna {sum(d.picks["luna_flat"][i][0] == d.ref[i][0] for i in dis1)}, neither {sum(d.picks["jev_flat"][i][0] != d.ref[i][0] and d.picks["luna_flat"][i][0] != d.ref[i][0] for i in dis1)}; sonnet right {sum(d.picks["sonnet"][i][0] == d.ref[i][0] for i in dis1)}')
+    md(f'- on the {len(dis2)} subindustry-only disagreements, right vs reference: jev {sum(d.picks["jev_flat"][i] == d.ref[i] for i in dis2)}, luna {sum(d.picks["luna_flat"][i] == d.ref[i] for i in dis2)}, neither {sum(d.picks["jev_flat"][i] != d.ref[i] and d.picks["luna_flat"][i] != d.ref[i] for i in dis2)}; sonnet right {sum(d.picks["sonnet"][i] == d.ref[i] for i in dis2)}')
+    md(f'- routed by the default rule among domain disagreements: jev {sum(d.uncertain(i) for i in dis1)}, luna {sum(d.uncertain(i, model="luna") for i in dis1)}, either {sum(d.uncertain(i) or d.uncertain(i, model="luna") for i in dis1)}')
+    md(f'- routed among sub-only disagreements: jev {sum(d.uncertain(i) for i in dis2)}, luna {sum(d.uncertain(i, model="luna") for i in dis2)}, either {sum(d.uncertain(i) or d.uncertain(i, model="luna") for i in dis2)}')
+    md('')
+
+    md(f'### domain disagreements ({len(dis1)})\n')
+    rows = [[d.companies[i]['name'], _name(d.yc[i]), _name(d.ref[i]), _mark(d, d.picks['jev_flat'][i], i) + f' ({d.top(i, 1)[0][1]:.2f})', _mark(d, d.picks['luna_flat'][i], i) + f' ({d.top(i, 1, "luna")[0][1]:.2f})', _mark(d, d.picks['sonnet'][i], i)]
+            for i in sorted(dis1, key=lambda i: d.companies[i]['name'].lower())]
+    table(['company', 'YC', 'reference', 'jev_flat (p)', 'luna_flat (p)', 'sonnet'], rows)
+    md(f'### same domain, different subindustry ({len(dis2)})\n')
+    rows = [[d.companies[i]['name'], _name(d.yc[i]), _name(d.ref[i]), _mark(d, d.picks['jev_flat'][i], i) + f' ({d.top(i, 1)[0][1]:.2f})', _mark(d, d.picks['luna_flat'][i], i) + f' ({d.top(i, 1, "luna")[0][1]:.2f})', _mark(d, d.picks['sonnet'][i], i)]
+            for i in sorted(dis2, key=lambda i: d.companies[i]['name'].lower())]
+    table(['company', 'YC', 'reference', 'jev_flat (p)', 'luna_flat (p)', 'sonnet'], rows)
+
+
+def routed_detail(d: Data) -> None:
+    """Every company the default rule routes (Jev), and Luna's routed set against it."""
+    md('## routed companies at the default rule (Jev flat), all, least sure first\n')
+    routed = sorted((i for i in d.picks['jev_flat'] if i in d.picks['sonnet'] and d.uncertain(i)), key=lambda i: d.top(i, 1)[0][1])
+    rows = [[d.companies[i]['name'], _name(d.yc[i]), _name(d.ref[i]), ', '.join(f'{k} {p:.2f}' for k, p in d.top(i)), _mark(d, d.picks['sonnet'][i], i), _brief(d.ok['sonnet'][i].get('rationale', ''), 200)] for i in routed]
+    table(['company', 'YC', 'reference', "Jev's top 3", 'Sonnet', "Sonnet's rationale"], rows)
+    md(f'- {len(routed)} routed; Jev top-1 right on them: {sum(d.picks["jev_flat"][i] == d.ref[i] for i in routed)}; Sonnet right: {sum(d.picks["sonnet"][i] == d.ref[i] for i in routed)}; reference in Jev\'s top 3: {sum(any(k == (d.ref[i][1] or OTHER) for k, _ in d.top(i)) for i in routed)}')
+    md(f'- at level 1 on the routed: jev right {sum(d.picks["jev_flat"][i][0] == d.ref[i][0] for i in routed)}, sonnet right {sum(d.picks["sonnet"][i][0] == d.ref[i][0] for i in routed)}')
+    md('')
+    md('## Luna routed companies at the default rule (Luna flat)\n')
+    routed_l = sorted((i for i in d.picks['luna_flat'] if i in d.picks['sonnet'] and d.uncertain(i, model='luna')), key=lambda i: d.top(i, 1, 'luna')[0][1])
+    md(f'- {len(routed_l)} routed; Luna right on them {sum(d.picks["luna_flat"][i] == d.ref[i] for i in routed_l)}; Sonnet right {sum(d.picks["sonnet"][i] == d.ref[i] for i in routed_l)}; overlap with Jev\'s routed set {len(set(routed) & set(routed_l))}')
+    md('')
+
+
+def fanout_refusals(d: Data) -> None:
+    """The companies Luna refused a fan-out question for."""
+    md('## Luna fan-out refusals\n')
+    ref_rows = [(i, r) for i, r in d.results['luna_fanout'].items() if 'error' in r]
+    qs = collections.Counter()
+    for i, r in ref_rows:
+        m = re.search(r"refused question '([^']+)'", r['error'])
+        qs[m.group(1) if m else r['error'][:60]] += 1
+    md(f'- {len(ref_rows)} refused rows; refused question field: {dict(qs)}')
+    md(f'- YC domain of the refused companies: {dict(collections.Counter(d.yc[i][0] for i, _ in ref_rows))}')
+    md('- companies: ' + ', '.join(d.companies[i]['name'] for i, _ in ref_rows))
+    md('')
+
+
+def nouls_detail(d: Data) -> None:
+    """Nouls against the flat Choice (2x2 and the off-diagonal companies), the B2B gap, how decisive the Nouls are."""
+    md('## Nouls: 2x2 and off-diagonal companies, Jev (all) and Luna (counts)\n')
+    secs = sectors(d)
+    for m in ('jev', 'luna'):
+        ids3 = [i for i in d.ok[f'{m}_flat'] if i in d.ok[f'{m}_nouls']]
+        dual = {i: sum(d.noul_p(i, m)[dom] > 0.5 for dom in secs) >= 2 for i in ids3}
+        uns = {i: d.uncertain(i, model=m) for i in ids3}
+        md(f'- {m}: dual&uncertain {sum(dual[i] and uns[i] for i in ids3)}, dual&sure {sum(dual[i] and not uns[i] for i in ids3)}, single&uncertain {sum(not dual[i] and uns[i] for i in ids3)}, single&sure {sum(not dual[i] and not uns[i] for i in ids3)}')
+        # how often dual coincides with Opus giving a secondary domain
+        has_sec = {i: bool(d.secondary.get(i)) for i in ids3}
+        md(f'- {m}: of the dual companies, Opus gave a secondary pair for {sum(has_sec[i] for i in ids3 if dual[i])} of {sum(dual.values())}; of the non-dual, {sum(has_sec[i] for i in ids3 if not dual[i])} of {sum(not v for v in dual.values())} (secondary exists only for adjudicated companies)')
+        md(f'- {m}: dual companies whose two sector Nouls match reference primary+secondary domains exactly: {sum(dual[i] and {dom for dom in secs if d.noul_p(i, m)[dom] > .5} == ({d.ref[i][0]} | ({d.secondary[i][0]} if d.secondary.get(i) else set())) & set(secs) for i in ids3)}')
+        if m == 'jev':
+            for title, sel in (('dual and uncertain', lambda i: dual[i] and uns[i]), ('dual but the Choice is sure', lambda i: dual[i] and not uns[i]), ('Choice uncertain but 0-1 sector Nouls', lambda i: uns[i] and not dual[i])):
+                rows = []
+                for i in sorted((i for i in ids3 if sel(i)), key=lambda i: d.companies[i]['name'].lower()):
+                    yes = ', '.join(f'{dom} {p:.2f}' for dom, p in sorted(d.noul_p(i).items(), key=lambda x: -x[1]) if p > 0.5 and dom in secs)
+                    rows.append([d.companies[i]['name'], _name(d.yc[i]), _name(d.ref[i]) + (f' + {d.secondary[i][0]}' if d.secondary.get(i) else ''), yes or '–', ', '.join(f'{k} {p:.2f}' for k, p in d.top(i, 2))])
+                md(f'### Jev, {title}: {len(rows)} companies\n')
+                table(['company', 'YC', 'reference (+ secondary domain)', 'sector Nouls yes', "Jev's top 2"], rows)
+    md('')
+    md('## B2B Noul vs "YC B2B": what the gap is made of\n')
+    for m in ('jev', 'luna'):
+        ids3 = list(d.ok[f'{m}_nouls'])
+        fires = [i for i in ids3 if d.noul_p(i, m)['B2B'] > 0.5]
+        md(f'- {m}: fires on {len(fires)} of {len(ids3)}; of those, YC B2B {sum(d.yc[i][0] == "B2B" for i in fires)}, YC Fintech {sum(d.yc[i][0] == "Fintech" for i in fires)}, Healthcare {sum(d.yc[i][0] == "Healthcare" for i in fires)}, Industrials {sum(d.yc[i][0] == "Industrials" for i in fires)}, RE {sum(d.yc[i][0] == "Real Estate and Construction" for i in fires)}, Consumer {sum(d.yc[i][0] == "Consumer" for i in fires)}, Other {sum(d.yc[i][0] == "Other" for i in fires)}; precision vs YC B2B would be {pct(sum(d.yc[i][0] == "B2B" for i in fires), len(fires))}, recall {pct(sum(d.yc[i][0] == "B2B" for i in fires), sum(d.yc[i][0] == "B2B" for i in ids3))}')
+    md('')
+    md('## Noul P(yes) distribution: how decisive are the Nouls\n')
+    for m in ('jev', 'luna'):
+        ps = [p for i in d.ok[f'{m}_nouls'] for dom, p in d.noul_p(i, m).items()]
+        md(f'- {m}: {len(ps)} Noul answers; share in 0.3-0.7: {pct(sum(.3 <= p <= .7 for p in ps), len(ps))}; share > 0.9 or < 0.1: {pct(sum(p > .9 or p < .1 for p in ps), len(ps))}')
+    md('')
+
+
+def stability_detail(d: Data) -> None:
+    """Flips between the first pass and the rerun, and how much the confidences moved."""
+    md('## stability detail\n')
+    for run in ('jev_flat', 'jev_sequential', 'jev_fanout', 'jev_nouls'):
+        a, b = d.ok[run], d.ok[f'{run}_rerun']
+        ids3 = [i for i in a if i in b]
+        if run in d.picks:
+            flips = [i for i in ids3 if d.picks[run][i] != d.picks[f'{run}_rerun'][i]]
+            md(f'- {run}: {len(flips)} label flips: ' + '; '.join(f'{d.companies[i]["name"]} {_name(d.picks[run][i])} -> {_name(d.picks[run + "_rerun"][i])} (top-1 {a[i]["confidence"].get("subindustry", a[i]["confidence"].get("domain")):.2f})' for i in flips))
+            md(f'  flips that were routed by the default rule in the first run: {sum(d.uncertain(i) if run == "jev_flat" else False for i in flips)} (rule defined on flat only)')
+        diffs = [abs(a[i]['confidence'][k] - b[i]['confidence'][k]) for i in ids3 for k in a[i]['confidence'] if k in b[i]['confidence']]
+        md(f'- {run}: confidence deltas: mean {statistics.mean(diffs):.4f}, median {statistics.median(diffs):.4f}, share exactly 0: {pct(sum(x == 0 for x in diffs), len(diffs))}, share > 0.05: {pct(sum(x > .05 for x in diffs), len(diffs))}')
+    for run in ('luna_flat', 'luna_sequential', 'luna_fanout', 'luna_nouls'):
+        a, b = d.ok[run], d.ok[f'{run}_rerun']
+        ids3 = [i for i in a if i in b]
+        same = sum(a[i]['output'] == b[i]['output'] and a[i]['confidence'] == b[i]['confidence'] and a[i].get('probabilities') == b[i].get('probabilities') for i in ids3)
+        md(f'- {run}: outputs, confidences and probabilities all identical on {same} of {len(ids3)}; input tokens identical on {sum(a[i]["input_tokens"] == b[i]["input_tokens"] for i in ids3)}; rerun errors {sum("error" in r for r in d.results[run + "_rerun"].values())}, same error ids as first run: {set(i for i, r in d.results[run].items() if "error" in r) == set(i for i, r in d.results[run + "_rerun"].items() if "error" in r)}')
+    md('')
+
+
+def latency_detail(d: Data) -> None:
+    """Latency per run with min and p99, reruns included."""
+    md('## latency detail: min and p99, and the rerun latencies\n')
+    rows = []
+    for run in sorted(d.ok):
+        lat = sorted(r['latency_ms'] for r in d.ok[run].values())
+        rows.append([run, len(lat), f'{lat[0]:.0f}', f'{statistics.median(lat):.0f}', f'{lat[int(len(lat) * .95) - 1]:.0f}', f'{lat[int(len(lat) * .99) - 1]:.0f}', f'{lat[-1]:.0f}', f'{statistics.mean(r["input_tokens"] for r in d.ok[run].values()):.0f}'])
+    table(['run', 'n', 'min ms', 'p50', 'p95', 'p99', 'max', 'mean in tok'], rows)
+
+
+def other_demos_latency() -> None:
+    """Demos 1 and 2 by the same measure; report.md reads them next to demo 3's. Demo 1's results are local only
+    (gitignored), so without them only demo 2's rows print."""
+    md('## guardrail and dealflow latency detail\n')
+    rows = []
+    for demo in ('guardrail', 'dealflow'):
+        res = {b: {i: r for i, r in rows_.items() if 'error' not in r} for b, rows_ in load_results(demo, RESULTS_DIR).items() if b not in ('notes', 'generation')}
+        for b, rs in res.items():
+            lat = sorted(r['latency_ms'] for r in rs.values())
+            rows.append([demo, b, len(lat), f'{lat[0]:.0f}', f'{statistics.median(lat):.0f}', f'{lat[int(len(lat) * .95) - 1]:.0f}', f'{lat[-1]:.0f}', f'{statistics.mean(r["input_tokens"] for r in rs.values()):.0f}'])
+    table(['demo', 'backend', 'n', 'min ms', 'p50', 'p95', 'max', 'mean in tok'], rows)
+
+
+def adjudication_detail(d: Data) -> None:
+    """Sonnet errors, how Opus's secondary pairs relate to YC, and the ANORIA and Roofr cases."""
+    md('## sonnet thinking (demo 3): errors and retries\n')
+    md(f'- sonnet errors {sum("error" in r for r in d.results["sonnet"].values())}, sonnet_thinking errors {sum("error" in r for r in d.results["sonnet_thinking"].values())}')
+    md('## Opus adjudication: secondary domains, and how often the secondary equals YC\n')
+    sec_eq_yc = sum(1 for i, r in d.adjudicated.items() if d.secondary.get(i) and d.secondary[i] == d.yc[i])
+    md(f'- secondary pair equals YC\'s label on {sec_eq_yc} companies; primary equals YC on {sum(d.ref[i] == d.yc[i] for i in d.adjudicated)}; neither on {sum(d.ref[i] != d.yc[i] and (d.secondary.get(i) != d.yc[i]) for i in d.adjudicated)}')
+    md(f'- Opus primary domain distribution on adjudicated: {dict(collections.Counter(d.ref[i][0] for i in d.adjudicated))}; YC domain distribution on the same: {dict(collections.Counter(d.yc[i][0] for i in d.adjudicated))}')
+    md('')
+    md('## the ANORIA case\n')
+    for i, r in d.adjudicated.items():
+        if d.companies[i]['name'].upper().startswith('ANORIA'):
+            md(f'- {d.companies[i]["name"]}: YC {d.yc[i]}, Opus {d.ref[i]}, secondary {d.secondary.get(i)}, picks {r["picks"]}, explanation: {r["label"]["explanation"]}')
+    md('')
+    md('## Roofr\n')
+    i = 'roofr'
+    md(f'- Roofr: YC {d.yc[i]}, reference {d.ref[i]}, secondary {d.secondary.get(i)}; picks: ' + ', '.join(f'{run} {_name(d.picks[run][i])}' for run in d.runs() if i in d.picks[run]) + (f'; Opus: {d.adjudicated[i]["label"]["explanation"]}' if i in d.adjudicated else ''))
+    md('')
+
+
+def pct1(k: int, n: int) -> str:
+    return f'{k / n:.1%}' if n else '–'
+
+
+def dom_p(d: Data, run: str, i: str) -> collections.Counter:
+    """A flat run's probability per domain: the sum of its subindustries' probabilities; Other stands alone."""
+    out = collections.Counter()
+    for k, v in d.ok[run][i]['probabilities']['subindustry'].items():
+        out[k if k == OTHER else d.s.parent[k]] += v
+    return out
+
+
+def dom_top(d: Data, run: str, i: str, k: int = 3) -> list[tuple[str, float]]:
+    return dom_p(d, run, i).most_common(k)
+
+
+def binom_two_sided(k: int, n: int) -> float:
+    """Exact two-sided binomial test against p = 0.5: the probability of every outcome no likelier than k."""
+    pmf = [math.comb(n, x) / 2 ** n for x in range(n + 1)]
+    return sum(q for q in pmf if q <= pmf[k] * (1 + 1e-9))
+
+
+def answer4(d: Data, m: str, routed: set[str], i: str) -> Pair:
+    return (d.picks['sonnet'] if i in routed else d.picks[f'{m}_flat'])[i]
+
+
+def change4(d: Data, m: str, i: str) -> str:
+    a, s, r = d.picks[f'{m}_flat'][i][0], d.picks['sonnet'][i][0], d.ref[i][0]
+    return 'same' if a == s else 'fixed' if s == r else 'broken' if a == r else 'changed, both wrong'
+
+
+# Eligible companies per YC domain: the 2026-10-09 recount in report.md section 2 (draw-time pools were not recorded).
+POOL = {'B2B': 1171, 'Consumer': 122, 'Fintech': 204, 'Healthcare': 278, 'Industrials': 220, 'Real Estate and Construction': 47, OTHER: 75}
+
+
+def domain_level(d: Data) -> None:
+    """Demo 3 at the domain level, with summed domain probabilities: routing, agreement, stability, sample vs pool."""
+    md('# DEMO 3 DOMAIN-LEVEL VIEWS\n')
+
+    both4 = {m: [i for i in d.picks[f'{m}_flat'] if i in d.picks['sonnet']] for m in ('jev', 'luna')}
+    unit4 = {m: cost(list(d.ok[f'{m}_flat'].values()), m) / len(d.ok[f'{m}_flat']) for m in both4}
+    sonnet_avg = cost(list(d.ok['sonnet'].values()), 'sonnet') / len(d.ok['sonnet'])
+
+    md('## domain level: the companies the default rule routes (Jev flat), least sure domain first\n')
+    routed4 = sorted((i for i in both4['jev'] if d.uncertain(i)), key=lambda i: (dom_top(d, 'jev_flat', i, 1)[0][1], d.companies[i]['name'].lower()))
+    rows = [[d.companies[i]['name'], d.yc[i][0], d.ref[i][0], ', '.join(f'{k} {p:.2f}' for k, p in dom_top(d, 'jev_flat', i)),
+             d.picks['sonnet'][i][0] + (' ✓' if d.picks['sonnet'][i][0] == d.ref[i][0] else ''), change4(d, 'jev', i)] for i in routed4]
+    table(['company', 'YC domain', 'reference domain', "Jev's top 3 domains (summed p)", 'Sonnet domain', 'routing'], rows)
+    changes = collections.Counter(change4(d, 'jev', i) for i in routed4)
+    md(f'- {len(routed4)} routed; already sure at domain level (the same rule on summed probabilities does not fire): {sum(not uncertain(dom_p(d, "jev_flat", i)) for i in routed4)}')
+    md(f'- domain changed by routing: {len(routed4) - changes["same"]} (' + ', '.join(f'{k} {v}' for k, v in changes.items() if k != 'same')
+      + f'); broken: {", ".join(d.companies[i]["name"] for i in routed4 if change4(d, "jev", i) == "broken") or "none"}')
+    md('')
+
+    md('## domain-level routing rule: the routing grid on summed domain probabilities (Jev flat, domain vs reference)\n')
+    rows = []
+    for t1, margin in ROUTE_SETTINGS:
+        routed = {i for i in both4['jev'] if uncertain(dom_p(d, 'jev_flat', i), t1, margin)}
+        n4 = len(both4['jev'])
+        rows.append([route_label(t1, margin), len(routed), pct1(len(routed), n4), pct1(sum(answer4(d, 'jev', routed, i)[0] == d.ref[i][0] for i in both4['jev']), n4),
+                     f'{1000 * (unit4["jev"] + cost([d.ok["sonnet"][i] for i in routed], "sonnet") / n4):.2f}'])
+    table(['route when (summed domain p)', 'routed', 'share routed', 'L1 vs reference', 'USD/1000 (routed at actual Sonnet cost)'], rows)
+
+    md('## subindustry rule (the report\'s), domain accuracy at one decimal, cost by Sonnet average and by actual routed cost\n')
+    rows = []
+    for t1, margin in ROUTE_SETTINGS:
+        cells = [route_label(t1, margin)]
+        for m in both4:
+            n4 = len(both4[m])
+            routed = {i for i in both4[m] if d.uncertain(i, t1, margin, model=m)}
+            cells += [pct1(len(routed), n4), pct1(sum(answer4(d, m, routed, i)[0] == d.ref[i][0] for i in both4[m]), n4),
+                      f'{1000 * (unit4[m] + sonnet_avg * len(routed) / n4):.2f}', f'{1000 * (unit4[m] + cost([d.ok["sonnet"][i] for i in routed], "sonnet") / n4):.2f}']
+        rows.append(cells)
+    table(['route when', 'jev routed', 'jev L1', 'jev USD/1000 avg', 'jev USD/1000 actual', 'luna routed', 'luna L1', 'luna USD/1000 avg', 'luna USD/1000 actual'], rows)
+
+    md('## combined system against YC at domain level (default rule)\n')
+    rows = []
+    for m in both4:
+        routed = {i for i in both4[m] if d.uncertain(i, model=m)}
+        n4 = len(both4[m])
+        rows.append([m, n4, pct1(sum(d.picks[f'{m}_flat'][i][0] == d.yc[i][0] for i in both4[m]), n4), pct1(sum(answer4(d, m, routed, i)[0] == d.yc[i][0] for i in both4[m]), n4),
+                     pct1(sum(d.picks['sonnet'][i][0] == d.yc[i][0] for i in both4[m]), n4)])
+    table(['decision model', 'n', 'alone L1 vs YC', '+ Sonnet (default rule) L1 vs YC', 'Sonnet alone L1 vs YC'], rows)
+
+    md('## the adjudicated companies at domain level: agreement with Opus\'s domain and with YC\'s\n')
+    rows = []
+    for run in d.runs():
+        adj4 = [i for i in d.adjudicated if i in d.picks[run]]
+        rows.append([run, len(adj4), sum(d.picks[run][i][0] == d.ref[i][0] for i in adj4), sum(d.picks[run][i][0] == d.yc[i][0] for i in adj4)])
+    table(['run', 'adjudicated answered', 'same domain as Opus', 'same domain as YC'], rows)
+
+    md('## domain-level stability: first pass vs rerun (flat)\n')
+    for m in ('jev', 'luna'):
+        a, b = f'{m}_flat', f'{m}_flat_rerun'
+        flips = sorted((i for i in d.picks[a] if i in d.picks[b] and d.picks[a][i][0] != d.picks[b][i][0]), key=lambda i: d.companies[i]['name'].lower())
+        cell = lambda run, i: f'{d.picks[run][i][0]} {dom_p(d, run, i)[d.picks[run][i][0]]:.2f}' + ('' if dom_top(d, run, i, 1)[0][0] == d.picks[run][i][0] else f' (highest sum {dom_top(d, run, i, 1)[0][0]})')
+        md(f'### {m}: {len(flips)} companies changed domain\n')
+        if flips:
+            table(['company', 'reference domain', 'first pass (summed p)', 'rerun (summed p)'], [[d.companies[i]['name'], d.ref[i][0], cell(a, i), cell(b, i)] for i in flips])
+    roofr = sorted(d.ok['jev_flat_rerun']['roofr']['probabilities']['subindustry'].items(), key=lambda x: -x[1])[:2]
+    md('- Roofr, jev_flat_rerun top two subindustries: ' + ', '.join(f'{k} {p:.2f}' for k, p in roofr))
+    md('')
+
+    md('## sample vs pool: share of the eligible companies taken per YC domain\n')
+    sample4 = collections.Counter(d.yc[i][0] for i in d.companies)
+    rows = [[dom, sample4[dom], f'{POOL[dom]:,}', pct1(sample4[dom], POOL[dom]), pct1(sample4[dom], len(d.companies)), pct1(POOL[dom], sum(POOL.values()))] for dom in POOL]
+    rows.append(['all', len(d.companies), f'{sum(POOL.values()):,}', pct1(len(d.companies), sum(POOL.values())), '100.0%', '100.0%'])
+    table(['YC domain', 'sample', 'pool', 'share taken', 'share of sample', 'share of pool'], rows)
+
+    md('## domain accuracy vs reference per YC domain, and reweighted to the pool\'s domain mix\n')
+    acc4 = {run: {dom: [d.picks[run][i][0] == d.ref[i][0] for i in d.picks[run] if d.yc[i][0] == dom] for dom in POOL} for run in ('jev_flat', 'luna_flat', 'sonnet')}
+    rows = [[dom, len(acc4['jev_flat'][dom]), *(pct1(sum(acc4[run][dom]), len(acc4[run][dom])) for run in acc4)] for dom in POOL]
+    rows.append(['sample mix', len(d.companies), *(pct1(sum(map(sum, acc4[run].values())), sum(map(len, acc4[run].values()))) for run in acc4)])
+    rows.append(['pool mix (reweighted)', '', *(f'{sum(statistics.mean(acc4[run][dom]) * POOL[dom] for dom in POOL) / sum(POOL.values()):.1%}' for run in acc4)])
+    table(['YC domain', 'n', 'jev_flat', 'luna_flat', 'sonnet'], rows)
+    dis4 = [i for i in d.picks['jev_flat'] if i in d.picks['luna_flat'] and d.picks['jev_flat'][i][0] != d.picks['luna_flat'][i][0]]
+    jr, lr = (sum(d.picks[run][i][0] == d.ref[i][0] for i in dis4) for run in ('jev_flat', 'luna_flat'))
+    md(f'- {len(dis4)} Jev/Luna domain disagreements: jev right {jr}, luna right {lr}; exact two-sided binomial test of {jr} vs {lr} against even odds: p = {binom_two_sided(jr, jr + lr):.3f}')
+    md('')
+
+    md('## domain of the top subindustry vs the domain with the highest summed probability\n')
+    for m in ('jev', 'luna'):
+        run = f'{m}_flat'
+        odd = sorted((i for i in d.picks[run] if d.picks[run][i][0] != dom_top(d, run, i, 1)[0][0]), key=lambda i: d.companies[i]['name'].lower())
+        md(f'### {m}: {len(odd)} companies\n')
+        if odd:
+            table(['company', 'top subindustry (p)', 'its domain (summed p)', 'highest-sum domain (p)', 'reference domain'],
+                  [[d.companies[i]['name'], f'{d.top(i, 1, m)[0][0]} {d.top(i, 1, m)[0][1]:.2f}', f'{d.picks[run][i][0]} {dom_p(d, run, i)[d.picks[run][i][0]]:.2f}',
+                    f'{dom_top(d, run, i, 1)[0][0]} {dom_top(d, run, i, 1)[0][1]:.2f}', d.ref[i][0]] for i in odd])
+
+    md('## same 100 companies (sonnet_thinking\'s): domain agreement with YC\n')
+    sub4 = list(d.picks['sonnet_thinking'])
+    md('- ' + ', '.join(f'{run} {sum(d.picks[run][i][0] == d.yc[i][0] for i in sub4 if i in d.picks[run])} of {sum(i in d.picks[run] for i in sub4)}' for run in ('sonnet', 'sonnet_thinking', 'jev_flat')))
+    md('')
+
+    md('## calibration bucket arithmetic: Jev flat, summed probability of the picked domain under 0.6\n')
+    confs, right = _confidences(d, 'jev_flat')['L1']
+    low = [k for k, c in enumerate(confs) if c < 0.6]
+    md(f'- {len(low)} companies under 0.6; domain right vs reference on {sum(right[k] for k in low)}')
+    md('')
+
+
+def tables(d: Data) -> None:
+    md('# DEMO 3 EXTRA TABLES\n')
+    sample_facts(d)
+    scoreboard_detail(d)
+    calibration_detail(d)
+    jev_vs_luna(d)
+    routed_detail(d)
+    fanout_refusals(d)
+    nouls_detail(d)
+    stability_detail(d)
+    latency_detail(d)
+    other_demos_latency()
+    adjudication_detail(d)
+    domain_level(d)
+    md('## largest definition / input sizes\n')
+    md(f'- flat question: {len(d.s.parent)} subindustries + Other = {len(d.s.parent) + 1} options')
+    md(f'- domains: {d.s.domains}')
 def report(results: dict[str, dict[str, dict]]) -> None:
     d = Data(results)
     scoreboards(d)
@@ -533,3 +936,4 @@ def report(results: dict[str, dict[str, dict]]) -> None:
     latency(d)
     for path in heatmap(d):
         console.print(f'heatmap -> {path}')
+    tables(d)

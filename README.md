@@ -43,8 +43,14 @@ uv run --env-file .env jev_vs_sonnet.py     # one command, one schema, two model
 ```
 
 Every demo runs as a few commands that write JSONL into `data/`, and a `report` command that reads those files
-and never calls a model. Each demo's doc lists its commands. Demo 3's results are committed, so
-`uv run report domains` works straight after cloning, without API keys.
+and never calls a model. Each demo's doc lists its commands. `uv run report <demo>` prints the scoreboard and
+every table the research report uses; `uv run report all` prints all three demos. Demos 2 and 3 have their results
+committed, so both work straight after cloning, without API keys. Demo 1 is mined from your own sessions and never
+committed, so on a fresh clone it prints one line saying its data is absent.
+
+The research report, [docs/report.md](docs/report.md), copies its tables unedited from that output; its prose was
+written by an AI agent from that output and the committed data. Its demo 1 numbers come from the owner's local run and
+cannot be rebuilt from the repository.
 
 ## How it works
 
@@ -114,7 +120,7 @@ Thinking changes more than how hard Claude works: it decides how Pydantic AI sen
 
 ```
 jev_vs_sonnet.py           one command, two models, timed
-docs/                      background and one document per demo
+docs/                      background, one document per demo, and the research report (report.md)
 data/                      inputs, reference labels, results and figures (see Data below)
 src/decisions_demo/
   cli.py                   run-demo and report, across demos

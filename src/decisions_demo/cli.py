@@ -5,6 +5,7 @@ report(results) (what report prints). Adding a demo means adding it to DEMOS.
 
   run-demo --demo guardrail --backends sonnet,jev
   report guardrail
+  report all        every demo in turn; demo 1's data is local only, so a fresh clone prints one line for it
 """
 
 from __future__ import annotations
@@ -47,6 +48,7 @@ report_app = typer.Typer(add_completion=False)
 
 
 @report_app.command()
-def report(demo: str = typer.Argument(...), results_dir: Path = typer.Option(RESULTS_DIR)):
-    """Scoreboard and demo-specific tables. Reads only data/, never calls a model."""
-    _demo(demo).report(load_results(demo, results_dir))
+def report(demo: str = typer.Argument(..., help=' | '.join([*DEMOS, 'all'])), results_dir: Path = typer.Option(RESULTS_DIR)):
+    """Scoreboard and every table the research report uses. Reads only data/, never calls a model."""
+    for name in DEMOS if demo == 'all' else [demo]:
+        _demo(name).report(load_results(name, results_dir))

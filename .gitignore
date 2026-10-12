@@ -14,5 +14,8 @@ data/companies.jsonl
 data/backups/
 # Left behind by `domains classify --retry-errors` if it is interrupted.
 *.retry.jsonl
-# The research report quotes mined session commands (see data/commands.jsonl above): local only.
-report/
+# The owner's working report quotes mined session commands (see data/commands.jsonl above): local only.
+# docs/report.md is the public report (its tables come from committed data only) and is tracked.
+/report/
+# `uv run report all > out.md` prints demo 1's commands when your local data is present.
+/out.md
